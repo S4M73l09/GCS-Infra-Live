@@ -1,0 +1,118 @@
+name: terraform-apply-from-pr-plan
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Número del Pull Request'
+        required: true
+      env_dir:
+        description: 'Directorio de entorno (p. ej., dev)'
+        required: false
+        default: 'dev'
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment:
+      name: dev            # Protege con Required reviewers en Settings → Environments → dev
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+    concurrency:
+      group: tf-apply-${{ github.ref }}-${{ inputs.env_dir }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Instalar GitHub CLI
+        run: |
+          type -p gh >/dev/null || { sudo apt-get update && sudo apt-get install -y gh; }
+          gh --version
+
+      - name: Resolver datos del PR (rama y SHA)
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          JSON=$(gh pr view ${{ inputs.pr_number }} --json headRefName,headSha,headRepository)
+          HEAD_REF=$(echo "$JSON" | jq -r '.headRefName')
+          HEAD_SHA=$(echo "$JSON" | jq -r '.headSha')
+          echo "ref=$HEAD_REF"   >> $GITHUB_OUTPUT
+          echo "sha=$HEAD_SHA"   >> $GITHUB_OUTPUT
+          echo "PR head ref: $HEAD_REF"
+          echo "PR head sha: $HEAD_SHA"
+
+      - name: Encontrar el último run exitoso de terraform-plan para esa rama/commit
+        id: run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Lista los últimos runs del workflow "terraform-plan" en esa rama
+          IDS=$(gh run list --workflow "terraform-plan" --branch "${{ steps.pr.outputs.ref }}" \
+                 --json databaseId,headSha,conclusion,updatedAt \
+                 --jq '.[] | select(.headSha=="${{ steps.pr.outputs.sha }}" and .conclusion=="success") | .databaseId' \
+                 | head -n1)
+          if [ -z "$IDS" ]; then
+            echo "No se encontró un run exitoso de 'terraform-plan' para el commit ${{ steps.pr.outputs.sha }}."
+            echo "Asegúrate de haber ejecutado el plan en el PR y que haya finalizado en success."
+            exit 1
+          fi
+          echo "id=$IDS" >> $GITHUB_OUTPUT
+          echo "Plan run id: $IDS"
+
+      - name: Checkout EXACTO del commit del PR (mismo código que se planificó)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.sha }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Auth a GCP (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          export_environment_variables: true
+
+      - name: Descargar artefacto del plan del run del PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "artifacts/${{ inputs.env_dir }}"
+          # Descarga TODOS los artefactos de ese run (incluye tfplan.bin/txt)
+          gh run download ${{ steps.run.outputs.id }} --dir "artifacts/${{ inputs.env_dir }}"
+          echo "Contenido descargado:"
+          find "artifacts/${{ inputs.env_dir }}" -maxdepth 2 -type f -print
+
+          # Localiza rutas del plan
+          PLAN_BIN=$(find "artifacts/${{ inputs.env_dir }}" -name tfplan.bin -print -quit || true)
+          PLAN_TXT=$(find "artifacts/${{ inputs.env_dir }}" -name tfplan.txt -print -quit || true)
+
+          if [ -z "$PLAN_BIN" ] || [ -z "$PLAN_TXT" ]; then
+            echo "No se encontraron tfplan.bin / tfplan.txt en los artefactos."
+            exit 1
+          fi
+
+          # Copia el plan al directorio del entorno para usar rutas estándar
+          mkdir -p "environments/${{ inputs.env_dir }}"
+          cp "$PLAN_BIN" "environments/${{ inputs.env_dir }}/tfplan.bin"
+          cp "$PLAN_TXT" "environments/${{ inputs.env_dir }}/tfplan.txt"
+
+      - name: Mostrar un resumen del plan (texto)
+        run: |
+          echo "=== tfplan.txt (primeras 200 líneas) ==="
+          sed -n '1,200p' environments/${{ inputs.env_dir }}/tfplan.txt || true
+
+      - name: Terraform Init (mismo backend/state)
+        working-directory: environments/${{ inputs.env_dir }}
+        run: terraform init -input=false
+
+      - name: Terraform Apply (usando EXACTAMENTE el plan del PR)
+        working-directory: environments/${{ inputs.env_dir }}
+        run: terraform apply -input=false -auto-approve tfplan.bin
+
