@@ -1,0 +1,36 @@
+name: terraform-plan
+on:
+  pull_request:
+    paths:
+      - 'environments/**'
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Auth to GCP (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          export_environment_variables: true
+
+      - name: Terraform Init
+        working-directory: environments/dev
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: environments/dev
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: environments/dev
+        run: terraform plan -input=false -no-color
