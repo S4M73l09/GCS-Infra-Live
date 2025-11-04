@@ -1,0 +1,40 @@
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Planes locales (el CI los sube como artefacto, no al repo)
+**/tfplan.bin
+**/tfplan.txt
+*.tfplan
+*.bin
+
+# Vars: por defecto ignóralas (sube solo ejemplos no sensibles)
+*.tfvars.json
+!environments/**/terraform.tfvars.example
+
+# ¡NO ignores el lockfile! Se debe versionar.
+# (Asegúrate de NO tener una regla que lo ignore)
+# .terraform.lock.hcl
+
+# --- Linters / seguridad (si los usas) ---
+.tflint.d/
+.tflint.json
+.checkov_cache/
+
+# --- Credenciales / llaves (por si acaso) ---
+*.pem
+*.key
+*.p12
+*service-account*.json
+*credentials*.json
+
+# --- IDE / SO ---
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

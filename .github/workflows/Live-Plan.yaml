@@ -3,6 +3,13 @@ on:
   pull_request:
     paths:
       - 'environments/**'
+  workflow_dispatch:
+    inputs:
+      env_dir:
+        description: 'Environment to plan'
+        required: false
+        default: 'dev'
+
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -12,8 +19,10 @@ jobs:
       pull-requests: write
     env:
       TF_IN_AUTOMATION: "true"
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: hashicorp/setup-terraform@v3
 
       - name: Auth to GCP (OIDC)
@@ -23,14 +32,41 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
           export_environment_variables: true
 
+      - name: Pick environment dir
+        id: envdir
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "dir=${{ inputs.env_dir }}" >> $GITHUB_OUTPUT
+          else
+            CHANGED=$(git diff --name-only origin/${{ github.base_ref }}... | grep '^environments/' | cut -d'/' -f2 | sort -u | head -n1)
+            echo "dir=${CHANGED:-dev}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Terraform Init
-        working-directory: environments/dev
+        working-directory: environments/${{ steps.envdir.outputs.dir }}
         run: terraform init -input=false
 
       - name: Terraform Validate
-        working-directory: environments/dev
+        working-directory: environments/${{ steps.envdir.outputs.dir }}
         run: terraform validate
 
-      - name: Terraform Plan
-        working-directory: environments/dev
-        run: terraform plan -input=false -no-color
+      # === Genera plan binario y texto legible ===
+      - name: Terraform Plan (save planfile)
+        id: plan
+        working-directory: environments/${{ steps.envdir.outputs.dir }}
+        run: |
+          terraform plan -input=false -out=tfplan.bin
+          terraform show -no-color tfplan.bin > tfplan.txt
+          echo "env=${{ steps.envdir.outputs.dir }}" >> $GITHUB_OUTPUT
+
+      # Sube artefactos para aplicar EXACTAMENTE este plan desde main
+      - name: Upload plan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ steps.envdir.outputs.dir }}-${{ github.sha }}
+          path: |
+            environments/${{ steps.envdir.outputs.dir }}/tfplan.bin
+            environments/${{ steps.envdir.outputs.dir }}/tfplan.txt
+          if-no-files-found: error
+
