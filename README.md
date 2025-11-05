@@ -144,3 +144,31 @@ terraform providers lock \
 - La **rama de pruebas (`feat/dev`)** contiene el código de Terraform y el **`plan.yml`** que genera el plan y los artefactos.
 - La **rama `main`** contiene **`apply.yml`**. Al ejecutarlo manualmente, **no requiere merge**: toma el **plan del PR** y el **código exacto del commit del PR**, permitiendo mantener `main` limpia.
 
+
+## Workflows
+
+1) **`Live-Plan.yaml`** (rama **`feat/dev`**)
+
+  * Trigger: `pull_request` (cambios en **`environments/**`**) y **`workflow_dispatch`**.
+  * Hace: **`init (lockfile readonly)`** -> **`validate`** -> **`plan`** -> sube artefactos: **`tfplan.bin`** (aplicable) y **`tfplan.txt`** (legible).
+
+  * ***Extras:*** selector de entorno por carpeta; inputs opcionales para modos forzados:
+    * **`force_refresh=true`** -> **`refresh-only`**
+    * **`replace_targets="addr1,addr2"** -> **`-replace`**
+    * **`destroy=true`** -> **`-destroy`**
+        (Restringido a mi usuario en **`workflow_dispatch`**)
+
+2) **`Live-Apply.yaml`** (Vive en main)
+
+  * Trigger: **`workflow_dispatch`** con input **`pr_number`** (y **`env_dir=dev`**).
+  * Hace: resuelve el SHA del PR -> Descarga el artefacto del ultimo plan exitoso -> **`checkout`** de ese commit exacto -> **`init`** -> **`apply tfplan.bin`**.
+  * Environment: **`dev`** con *Required reviewers* (aprobacion antes de aplicar)
+
+## ✅ Estado actual (feat/dev)
+
+  * Backend GCS funcionando (live/dev) ✔  
+  * OIDC/WIF configurado y probado ✔  
+  * Plan en PR con artefactos ✔  
+  * Apply manual desde main (exact plan) ✔  
+  * Lockfile versionado y CI en solo lectura ✔  
+

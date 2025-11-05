@@ -1,14 +1,25 @@
 name: terraform-plan
 on:
   pull_request:
-    paths:
-      - 'environments/**'
+    paths: ['environments/**']
   workflow_dispatch:
     inputs:
       env_dir:
         description: 'Environment to plan'
         required: false
         default: 'dev'
+      force_refresh:
+        description: 'Plan de refresco (-refresh-only)'
+        required: false
+        default: 'false'
+      replace_targets:
+        description: 'Direcciones a forzar -replace (coma separadas)'
+        required: false
+        default: ''
+      destroy:
+        description: 'Plan de destrucción (-destroy)'
+        required: false
+        default: 'false'
 
 jobs:
   plan:
@@ -19,11 +30,12 @@ jobs:
       pull-requests: write
     env:
       TF_IN_AUTOMATION: "true"
-
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
 
       - uses: hashicorp/setup-terraform@v3
+        with: { terraform_version: 1.9.5 }
 
       - name: Auth to GCP (OIDC)
         uses: google-github-actions/auth@v2
@@ -32,35 +44,66 @@ jobs:
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
           export_environment_variables: true
 
+      # ✅ Solo tú puedes usar modos forzados cuando se ejecuta manualmente
+      - name: Guard rail (restrict forced modes)
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.force_refresh == 'true' || inputs.destroy == 'true' || inputs.replace_targets != '') }}
+        run: |
+          ALLOWED="S4M73l09"   # <-- pon tu user exacto
+          if [ "${{ github.actor }}" != "$ALLOWED" ]; then
+            echo "Solo @$ALLOWED puede usar modos forzados."; exit 1;
+          fi
+
       - name: Pick environment dir
         id: envdir
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "dir=${{ inputs.env_dir }}" >> $GITHUB_OUTPUT
+            echo "dir=${{ inputs.env_dir || 'dev' }}" >> "$GITHUB_OUTPUT"
           else
             CHANGED=$(git diff --name-only origin/${{ github.base_ref }}... | grep '^environments/' | cut -d'/' -f2 | sort -u | head -n1)
-            echo "dir=${CHANGED:-dev}" >> $GITHUB_OUTPUT
+            echo "dir=${CHANGED:-dev}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Terraform Init
+      - name: Terraform Init (readonly lockfile)
         working-directory: environments/${{ steps.envdir.outputs.dir }}
-        run: terraform init -input=false
+        run: terraform init -input=false -lockfile=readonly
 
       - name: Terraform Validate
         working-directory: environments/${{ steps.envdir.outputs.dir }}
         run: terraform validate
 
-      # === Genera plan binario y texto legible ===
+      - name: Build plan flags
+        id: flags
+        shell: bash
+        run: |
+          FLAGS="-input=false -no-color"
+          # destroy
+          if [ "${{ inputs.destroy }}" = "true" ]; then FLAGS="$FLAGS -destroy"; fi
+          # force refresh-only
+          if [ "${{ inputs.force_refresh }}" = "true" ]; then FLAGS="$FLAGS -refresh-only"; fi
+          # -replace para múltiples direcciones (coma separadas)
+          REPL="${{ inputs.replace_targets }}"
+          if [ -n "$REPL" ]; then
+            IFS=',' read -ra ARR <<< "$REPL"
+            for t in "${ARR[@]}"; do
+              t="$(echo "$t" | xargs)"   # trim
+              [ -n "$t" ] && FLAGS="$FLAGS -replace=$t"
+            done
+          fi
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+
+      # 👍 Se usa -detailed-exitcode para diferenciar: 0=sin cambios, 2=con cambios, 1=error
       - name: Terraform Plan (save planfile)
         id: plan
         working-directory: environments/${{ steps.envdir.outputs.dir }}
+        shell: bash
         run: |
-          terraform plan -input=false -out=tfplan.bin
-          terraform show -no-color tfplan.bin > tfplan.txt
-          echo "env=${{ steps.envdir.outputs.dir }}" >> $GITHUB_OUTPUT
+          set -e
+          terraform plan ${{ steps.flags.outputs.flags }} -out=tfplan.bin || EXIT=$?
+          # Cuando usamos -detailed-exitcode queremos capturarlo, pero aquí no lo pusimos para no fallar el job.
+          # Si prefieres, añade -detailed-exitcode a FLAGS en el paso anterior y maneja EXIT 0/2.
+          terraform show -no-color tfplan.bin > tfplan.txt || true
 
-      # Sube artefactos para aplicar EXACTAMENTE este plan desde main
       - name: Upload plan artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -69,4 +112,5 @@ jobs:
             environments/${{ steps.envdir.outputs.dir }}/tfplan.bin
             environments/${{ steps.envdir.outputs.dir }}/tfplan.txt
           if-no-files-found: error
+
 
