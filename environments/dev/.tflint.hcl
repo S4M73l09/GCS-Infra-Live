@@ -5,7 +5,7 @@ config {
 plugin "google" {
   enabled = true
   source  = "github.com/terraform-linters/tflint-ruleset-google"
-  version = ">= 0.37.1"
+  version = "0.37.1"
 }
 
 rule "terraform_required_version"    { enabled = true }
