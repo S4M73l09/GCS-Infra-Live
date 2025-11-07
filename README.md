@@ -144,6 +144,84 @@ terraform providers lock \
 - La **rama de pruebas (`feat/dev`)** contiene el código de Terraform y el **`plan.yml`** que genera el plan y los artefactos.
 - La **rama `main`** contiene **`apply.yml`**. Al ejecutarlo manualmente, **no requiere merge**: toma el **plan del PR** y el **código exacto del commit del PR**, permitiendo mantener `main` limpia.
 
+## ✅ TFLint en este repo (lint de Terraform)
+Para mejorar la seguridad y de paso ver problemas de codigo en Terraform en sus diferentes archivos, añadi un archivo `.tflint`.
+
+***Su objetivo:*** es detectar problemas de `Terraform` antes del `plan/Apply` (tipos, Recursos obsoletos, reglas del provider de google y en general de cualquier Provider, etc)
+
+### Qué se añadio:
+* Archivo de configuracion: `environments/dev/.tflint.hcl`
+* Plugin de reglas de Google: `tflint-ruleset-google` (version ***exacta:*** `0.37.1`)
+* Job en CI (workflow de plan):
+  * `tflint --init`(descarga el plugin)
+  * `tflint`(ejecuta el lint)
+
+### Instalación local (opcional)  
+```bash
+# (Ubuntu/WSL) instalar unzip si falta
+sudo apt-get update && sudo apt-get install -y unzip
+
+# Instalar TFLint
+curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+tflint --version
+
+# Inicializar y ejecutar en el entorno dev
+cd environments/dev
+tflint --init
+tflint
+```  
+### Problemas que aparecieron y cómo se arreglaron
+
+1. `apt update` fallaba (NO_PUBKEY repo Google Cloud SDK)
+   * Solucion: reimportar clave y actualizar:
+  ```bash
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/google-cloud-sdk.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/google-cloud-sdk.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+     | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+    sudo apt-get update
+  ```  
+
+2. Faltaba `unzip` (el instalador de TFlint no podia descomprimir)
+   * Solución: `sudo apt-get install -y unzip`  
+
+3. Error TFLint ↔ Plugin Google por version de API incompatible
+   * Causa: el plugin era antiguo para el TFLint instalado.
+   * Solución: ***pinear versión exacta*** reciente en `.tflint.hcl`:
+   ```hcl
+    plugin "google" {
+    enabled = true
+    source  = "github.com/terraform-linters/tflint-ruleset-google"
+    version = "0.37.1"   # ¡versión exacta, sin >=!
+    }
+   ```
+   * Nota: borrar caché antes de de re-inicializar:
+   ```bash
+   rm -rf ~/.tflint.d/plugins || true
+   tflint --init
+   ```
+
+4. 404 al inicializar el plugin
+   * Causa: se usó `version = ">= X.Y.Z"` (TFLint no acepta rangos con `source`)
+   * Solución: usar número exacto (p. ej.`0.37.1).
+
+5. Avisos de lint en el código
+   * Variables sin tipo (`project_id`, `region`) -> añadir `type` (y `default` si aplica):  
+   ```hcl
+   variable "project_id" { type = string }
+   variable "region"     { type = string  default = "europe-west1" }
+   ```  
+   * Variable `labels` no usada -> usarla en recursos (`labels = var.labels`) o eliminarla
+
+## Automatizar actualización del plugin (opcional)
+
+Se añadio un Renovate (App) con `Renovate.json` en `main` para abrir PRs que actualicen la línea: 
+```hcl
+version = "X.Y.Z"
+```  
+en los `tflint.hcl`.
+Configurado para apuntar a la rama de `feat/dev` y en modo ***Scan and Alert***
+
 
 ## Workflows
 
@@ -171,4 +249,5 @@ terraform providers lock \
   * Plan en PR con artefactos ✔  
   * Apply manual desde main (exact plan) ✔  
   * Lockfile versionado y CI en solo lectura ✔  
+  * `tflint.hcl` para mejorar seguridad ✔  
 
