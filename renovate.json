@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "baseBranches": ["feat/dev"],
+  "labels": ["deps", "tflint"],
+  "prConcurrentLimit": 2,
+  "rebaseWhen": "behind-base-branch",
+
+  "regexManagers": [
+    {
+      "fileMatch": ["^environments/.*/\\.tflint\\.hcl$"],
+      "matchStrings": [
+        "plugin\\s+\"google\"[\\s\\S]*?version\\s*=\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "terraform-linters/tflint-ruleset-google",
+      "extractVersionTemplate": "^v?(?<version>.*)$",
+      "versioningTemplate": "semver"
+    }
+  ],
+
+  "packageRules": [
+    {
+      "matchDatasources": ["github-releases"],
+      "groupName": "tflint rulesets",
+      "schedule": ["after 7:00 on monday"],
+      "automerge": false
+    }
+  ]
+}
+
