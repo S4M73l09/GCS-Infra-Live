@@ -244,10 +244,12 @@ Configurado para apuntar a la rama de `feat/dev` y en modo ***Scan and Alert***
 
 ## ✅ Estado actual (feat/dev)
 
-  * Backend GCS funcionando (live/dev) ✔  
-  * OIDC/WIF configurado y probado ✔  
-  * Plan en PR con artefactos ✔  
-  * Apply manual desde main (exact plan) ✔  
-  * Lockfile versionado y CI en solo lectura ✔  
+  * `Backend GCS` funcionando (live/dev) ✔  
+  * `OIDC/WIF` configurado y probado ✔  
+  * Plan en PR con `artefactos` ✔  
+  * Apply manual desde `main (exact plan)` ✔  
+  * `Lockfile` versionado y CI en solo lectura ✔  
   * `tflint.hcl` para mejorar seguridad ✔  
+  * `Infracost_api`añadido para visualizar costes ✔ 
+
 

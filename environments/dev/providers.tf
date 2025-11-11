@@ -1,6 +1,4 @@
 # providers.tf
-variable "project_id" {}
-variable "region"     { default = "europe-west1" }
 
 provider "google" {
   project = var.project_id

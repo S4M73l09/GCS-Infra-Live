@@ -103,14 +103,41 @@ jobs:
           # Cuando usamos -detailed-exitcode queremos capturarlo, pero aquí no lo pusimos para no fallar el job.
           # Si prefieres, añade -detailed-exitcode a FLAGS en el paso anterior y maneja EXIT 0/2.
           terraform show -no-color tfplan.bin > tfplan.txt || true
+      # Infracost estimado
+      - name: Terraform Show (JSON)
+        working-directory: ${{ steps.envdir.outputs.dir }}
+        run: terraform show -json tfplan.bin > tfplan.json
+
+      # === Instalar Infracost ===
+      - name: Setup Infracost
+        uses: infracost/actions/setup@v3
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+      
+      # === Comentar el coste en el PR ===
+      - name: Infracost PR comment
+        working-directory: ${{ steps.envdir.outputs.dir }}
+        env:
+         INFRACOST_CURRENCY: ${{ vars.INFRACOST_CURRENCY }} # Define EUR en Repo->Variables
+        run: |
+          infracost breakdown \
+            --path tfplan.json \
+            --format github-comment \
+            --github-token ${{ github.token }} \
+            --show-skipped
+
+      # Listar antes de subir 
+      - run: ls -l ${{ steps.envdir.outputs.dir }}
 
       - name: Upload plan artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-${{ steps.envdir.outputs.dir }}-${{ github.sha }}
+          name: tfplan-${{ github.sha }}
           path: |
-            environments/${{ steps.envdir.outputs.dir }}/tfplan.bin
-            environments/${{ steps.envdir.outputs.dir }}/tfplan.txt
+            ${{ steps.envdir.outputs.dir }}/tfplan.bin
+            ${{ steps.envdir.outputs.dir }}/tfplan.txt
+            ${{ steps.envdir.outputs.dir }}/tfplan.json
+          retention-days: 10
           if-no-files-found: error
 
 
