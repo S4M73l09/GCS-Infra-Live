@@ -68,7 +68,7 @@ jobs:
 
       # (Opcional) Verificar version de terraform
       - name: Check Terraform version
-        if: steps.changes.outputs.tf == `true`
+        if: steps.changes.outputs.tf == 'true'
         run: |
           terraform -version
           v=$(terraform version -json | jq -r .terraform_version)
