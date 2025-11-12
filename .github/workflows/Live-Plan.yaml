@@ -59,11 +59,20 @@ jobs:
           exit 0
 
       # 2) Setup Terraform
-      - name: Setup Terraform
+      - name: Setup Terraform 1.9.7
         if: steps.changes.outputs.tf == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.5
+          terraform_version: 1.9.7
+          terraform_wrapper: false
+
+      # (Opcional) Verificar version de terraform
+      - name: Check Terraform version
+        if: steps.changes.outputs.tf == `true`
+        run: |
+          terraform -version
+          v=$(terraform version -json | jq -r .terraform_version)
+          case "$v" in 1.9.*) echo "OK";; *) echo "ERROR TF=$v (esperaba 1.9.x)"; exit 1;; esac
 
       # 3) Auth a GCP vía OIDC
       - name: Google Auth (OIDC)

@@ -213,6 +213,45 @@ tflint
    ```  
    * Variable `labels` no usada -> usarla en recursos (`labels = var.labels`) o eliminarla
 
+6. auth@v2 → “must specify exactly one of workload_identity_provider or credentials_json”
+   * El workflow usaba los secretos del repositorio en vez de las variables para el uso de OIDC y de la SA de Terraform
+   * La solucion fue modificar dicha linea en el workflow para que use las variables `(vars.<variable_OIDC_GCP>)`
+
+7. Error: ... unauthorized_client ... "credential is rejected by the attribute condition"
+   * Este error ocurria porque la CEL del provider no coincidia con los claims reales (repo/branch/PR)
+   * Solución: Fue Ajustar mapeos y condicion por ID de repo y ramas permitidas.  
+
+   ***Mappings mínimos en el provider:***
+```ini
+  google.subject              = assertion.sub
+  attribute.repository_id     = assertion.repository_id
+  attribute.ref               = assertion.ref
+  # (útiles)
+  attribute.repository        = assertion.repository
+  attribute.workflow          = assertion.workflow
+  attribute.actor             = assertion.actor
+  attribute.repository_owner  = assertion.repository_owner
+```
+   ***CEL final (dos repos por ID + main/feat/dev + PRs):***
+```cel
+attribute.repository_id in ["1089522719","1083637831"] &&
+(
+  attribute.ref == "refs/heads/main" ||
+  attribute.ref == "refs/heads/feat/dev" ||
+  matches(string(attribute.ref), "^refs/pull/")
+)
+```
+Nota: Se usa `matches(string(...))` para evitar el error de tipos `dyn` con `startsWith` ya que google no acepta eso.
+
+8. Bindings del repo `Live-Infra` en la SA de `Bootstrap`
+   * Este error se debe a no colocar el binding correcto del repo `Live-Infra`
+   * Solución: colocar dichos binding en la SA del `Bootstrap` apuntando al repo de ´Live-Infra`
+```ruby
+principalSet://iam.googleapis.com/projects/<BOOTSTRAP_PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/attribute.repository/S4M73l09/GCS-Infra-Live
+principalSet://iam.googleapis.com/projects/<BOOTSTRAP_PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL_ID>/attribute.repository/S4M73l09/GCS-Bootstrap---Live
+```
+***Rol: Usuario de identidades de carga de trabajo `(roles/iam.workloadIdentityUser)`***
+
 ## Automatizar actualización del plugin (opcional)
 
 Se añadio un Renovate (App) con `Renovate.json` en `main` para abrir PRs que actualicen la línea: 
