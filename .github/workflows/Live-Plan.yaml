@@ -156,6 +156,7 @@ jobs:
 
       - name: TFLint (SARIF only)
         if: steps.changes.outputs.tf == 'true'
+        shell: bash
         run: |
           set -o pipefall
           tflint -f sarif | tee tflint.sarif 
