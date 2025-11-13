@@ -158,7 +158,7 @@ jobs:
         if: steps.changes.outputs.tf == 'true'
         shell: bash
         run: |
-          set -o pipefall
+          set -o pipefail
           tflint -f sarif | tee tflint.sarif 
         working-directory: ${{ steps.envdir.outputs.dir }}
 
