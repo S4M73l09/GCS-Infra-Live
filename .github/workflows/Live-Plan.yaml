@@ -28,6 +28,7 @@ permissions:
   contents: read
   pull-requests: write
   id-token: write
+  security-events: write # <-- necesario para upload.sarif
 
 jobs:
   plan:
@@ -74,6 +75,23 @@ jobs:
           v=$(terraform version -json | jq -r .terraform_version)
           case "$v" in 1.9.*) echo "OK";; *) echo "ERROR TF=$v (esperaba 1.9.x)"; exit 1;; esac
 
+      # 2.1) Cache de plugin dir
+      - name: Cache Terraform plugins
+        if: steps.changes.outputs.tf == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            tf-${{ runner.os }}-
+
+      # 2.2) Configurar terraform.rc para usar el cache
+      - name: Configure Terraform plugin cache
+        if: steps.changes.outputs.tf == 'true'
+        run: |
+         mkdir -p ~/.terraform.d
+         echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
+
       # 3) Auth a GCP vía OIDC
       - name: Google Auth (OIDC)
         if: steps.changes.outputs.tf == 'true'
@@ -111,7 +129,54 @@ jobs:
         working-directory: ${{ steps.envdir.outputs.dir }}
         run: terraform validate
 
-      # 7) Construir flags del plan
+      # 7) TFLint (antes siempre del plan)
+      - name: Setup TFLint
+        if: steps.changes.outputs.tf == 'true'
+        uses: terraform-linters/setup-tflint@v4
+
+      # 7.1) Ejecutar TFlint (Con SARIF y Cache)
+      - name: Cache TFLint plugins
+        if: steps.changes.outputs.tf == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ runner.os }}-${{ hashFiles('**/.tflint.hcl') }}
+          restore-keys: |
+            tflint-${{ runner.os }}-
+
+      - name: TFLint init
+        if: steps.changes.outputs.tf == 'true'
+        run: tflint --init
+        working-directory: ${{ steps.envdir.outputs.dir }}
+
+      - name: TFLint (pretty)
+        if: steps.changes.outputs.tf == 'true'
+        run: tflint
+        working-directory: ${{ steps.envdir.outputs.dir }}
+
+      - name: TFLint (SARIF only)
+        if: steps.changes.outputs.tf == 'true'
+        run: |
+          set -o pipefall
+          tflint -f sarif | tee tflint.sarif 
+        working-directory: ${{ steps.envdir.outputs.dir }}
+
+      - name: Upload SARIF
+        if: steps.changes.outputs.tf == 'true'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.envdir.outputs.dir }}/tflint.sarif
+        
+      - name: Upload tflint.sarif artifacts
+        if: steps.changes.outputs.tf == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tflint-sarif
+          path: ${{ steps.envdir.outputs.dir }}/tflint.sarif
+          retention-days: 14
+
+
+      # 8) Construir flags del plan
       - name: Build plan flags
         if: steps.changes.outputs.tf == 'true'
         id: flags
@@ -135,7 +200,7 @@ jobs:
           echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
           echo "Plan flags: $FLAGS"
 
-      # 8) Terraform Plan (genera .bin y .txt; respetamos detailed-exitcode)
+      # 9) Terraform Plan (genera .bin y .txt; respetamos detailed-exitcode)
       - name: Terraform Plan (save planfile)
         if: steps.changes.outputs.tf == 'true'
         id: planstep
@@ -150,13 +215,13 @@ jobs:
             exit 1
           fi
 
-      # 9) Terraform Show (JSON) para Infracost
+      # 10) Terraform Show (JSON) para Infracost
       - name: Terraform Show (JSON)
         if: steps.changes.outputs.tf == 'true'
         working-directory: ${{ steps.envdir.outputs.dir }}
         run: terraform show -json tfplan.bin > tfplan.json
 
-      # 10) Infracost
+      # 11) Infracost
       - name: Setup Infracost
         if: steps.changes.outputs.tf == 'true'
         uses: infracost/actions/setup@v3
@@ -175,7 +240,7 @@ jobs:
             --github-token ${{ github.token }} \
             --show-skipped
 
-      # 11) Subir artefactos del plan (.bin, .txt, .json)
+      # 12) Subir artefactos del plan (.bin, .txt, .json)
       - name: Upload plan artifacts
         if: steps.changes.outputs.tf == 'true'
         uses: actions/upload-artifact@v4

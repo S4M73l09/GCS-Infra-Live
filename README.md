@@ -252,6 +252,14 @@ principalSet://iam.googleapis.com/projects/<BOOTSTRAP_PROJECT_NUMBER>/locations/
 ```
 ***Rol: Usuario de identidades de carga de trabajo `(roles/iam.workloadIdentityUser)`***
 
+9. `Unsupported Terraform Core version` (runner en 1.6.5 vs `required_version >= 1.8.0`)
+   * Este error se debe a una version equivocada de Terraform en comparacion con la version requerida en el archivo de `versions.tf`
+   * Solucion: `hashicorp/setup-terraform@v3` con `terraform_version: 1.9.7`, `terraform_wrapper: false`.
+     * Verificación de versión en el job.
+     * Pins de provider: `google`/`google-beta ~> 5.45`.
+     * `terraform init -lockfile=readonly`.
+
+
 ## Automatizar actualización del plugin (opcional)
 
 Se añadio un Renovate (App) con `Renovate.json` en `main` para abrir PRs que actualicen la línea: 
@@ -268,12 +276,15 @@ Configurado para apuntar a la rama de `feat/dev` y en modo ***Scan and Alert***
 
   * Trigger: `pull_request` (cambios en **`environments/**`**) y **`workflow_dispatch`**.
   * Hace: **`init (lockfile readonly)`** -> **`validate`** -> **`plan`** -> sube artefactos: **`tfplan.bin`** (aplicable) y **`tfplan.txt`** (legible).
+  * TFLint con cache (`~/.tflint.d/plugins`), `tflint --init`, salida “pretty” y **SARIF** + subida a Code Scanning.
+  * Cache de plugins de Terraform (`~/.terraform.d/plugin-cache`) y `terraform.rc`.
 
   * ***Extras:*** selector de entorno por carpeta; inputs opcionales para modos forzados:
     * **`force_refresh=true`** -> **`refresh-only`**
     * **`replace_targets="addr1,addr2"** -> **`-replace`**
     * **`destroy=true`** -> **`-destroy`**
         (Restringido a mi usuario en **`workflow_dispatch`**)
+    * **`Infracost`** integrado (plan → comentario en PR).
 
 2) **`Live-Apply.yaml`** (Vive en main)
 
