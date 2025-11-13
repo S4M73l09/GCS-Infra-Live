@@ -292,6 +292,21 @@ Configurado para apuntar a la rama de `feat/dev` y en modo ***Scan and Alert***
   * Hace: resuelve el SHA del PR -> Descarga el artefacto del ultimo plan exitoso -> **`checkout`** de ese commit exacto -> **`init`** -> **`apply tfplan.bin`**.
   * Environment: **`dev`** con *Required reviewers* (aprobacion antes de aplicar)
 
+## Video de demostracion del Workflow
+
+<video src="https://github.com/user-attachments/assets/27e975c5-c57c-48c8-925e-55249caee128" controls style="max-width: 100%; height: auto;"> Video demostracion de workflow </video>
+
+
+Imagen que muestra esquema completo + artifacts
+
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/b6f8dc87-ecc9-45f5-b366-da1f3958f867"
+    alt="Imagen que muestra esquema completo + artifacts"
+    style="max-width: 100%; height: auto;"
+  />
+</p>
+
 ## ✅ Estado actual (feat/dev)
 
   * `Backend GCS` funcionando (live/dev) ✔  
