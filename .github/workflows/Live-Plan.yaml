@@ -2,9 +2,9 @@ name: terraform-plan
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["main"]         # ejecuta en cualquier PR hacia main
   push:
-    branches: ["feat/**"]
+    branches: ["feat/**"]      # opcional: también al pushear a ramas de trabajo
   workflow_dispatch:
     inputs:
       env_dir:
@@ -31,25 +31,25 @@ permissions:
   security-events: write  # necesario para upload_sarif
 
 jobs:
-  # ────────────────────────────────────────────────────────────────────────────
-  # 0) Cambios y cálculo de directorio (outputs para el resto de jobs)
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────
+  # 0) Detección de cambios + cálculo de directorio de entorno
+  # ──────────────────────────────────────────────────────────────
   changes:
     name: Detect changes (Terraform/Workflow)
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
     outputs:
-      tf:   ${{ steps.changes.outputs.tf }}
-      dir:  ${{ steps.envdir.outputs.dir }}
+      tf:  ${{ steps.changes.outputs.tf }}
+      dir: ${{ steps.envdir.outputs.dir }}
     steps:
-      # #0) Checkout con historial completo
+      # #0) Checkout con historial completo (para detectar cambios correctamente)
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # #1) Detectar cambios
+      # #1) Detectar si hay cambios relevantes; si no, salimos elegante
       - name: Detect changes (Terraform/Workflow)
         id: changes
         uses: dorny/paths-filter@v3
@@ -65,26 +65,35 @@ jobs:
           echo "No hay cambios en environments/** ni en el workflow. Saliendo."
           exit 0
 
-      # 4) Elegir carpeta de environment (tu mismo script)
+      # 4) Elegir carpeta de environment (FIX: ENV inicializado)
       - name: Pick environment dir
         id: envdir
         if: steps.changes.outputs.tf == 'true'
         shell: bash
         run: |
-          set -uo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.env_dir }}" != "" ]]; then
+          set -Eeuo pipefail
+
+          # Default seguro
+          ENV="environments/dev"
+
+          # Si viene por workflow_dispatch con input, úsalo
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
             ENV="environments/${{ inputs.env_dir }}"
           else
-            BASE="$(git branch --show-current)"
-            if [[ -z "$BASE" ]]; then BASE="$(git diff --name-only origin/${GITHUB_BASE_REF:-'main'} | grep '^environments/' | cut -d'/' -f1-2 | sort -u | head -n1 || true)"; fi
-            [[ -z "$ENV" ]] && ENV="environments/dev"
+            # Intenta deducir el primer entorno tocado en el diff con la base
+            base_ref="${GITHUB_BASE_REF:-main}"
+            changed_env="$(git diff --name-only "origin/${base_ref}" | awk -F/ '/^environments\//{print $1"/"$2}' | sort -u | head -n1 || true)"
+            if [[ -n "$changed_env" ]]; then
+              ENV="$changed_env"
+            fi
           fi
+
           echo "dir=$ENV" >> "$GITHUB_OUTPUT"
           echo "Environment dir: $ENV"
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # 1) Init + Validate (idéntico a tus pasos originales)
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────
+  # 1) INIT + VALIDATE (idéntico a tus pasos originales)
+  # ──────────────────────────────────────────────────────────────
   init_validate:
     name: Terraform Init
     runs-on: ubuntu-latest
@@ -122,8 +131,9 @@ jobs:
           mkdir -p ~/.terraform.d
           echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
 
-      # 3) Auth a GCP via OIDC (igual que tenías)
+      # 3) Auth a GCP via OIDC
       - name: Google Auth (OIDC)
+        if: needs.changes.outputs.tf == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -131,17 +141,19 @@ jobs:
 
       # 5) Terraform Init (Lockfile readonly)
       - name: Terraform Init (readonly lockfile)
+        if: needs.changes.outputs.tf == 'true'
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform init -input=false -lockfile=readonly
 
       # 6) Terraform Validate
       - name: Terraform Validate
+        if: needs.changes.outputs.tf == 'true'
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform validate -no-color
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # 2) TFLint (exactamente tus pasos: cache + pretty + SARIF + artifacts)
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────
+  # 2) TFLINT (cache + pretty + SARIF + artifacts)
+  # ──────────────────────────────────────────────────────────────
   tflint:
     name: TFLint
     runs-on: ubuntu-latest
@@ -150,7 +162,7 @@ jobs:
     env:
       TF_IN_AUTOMATION: "true"
     steps:
-      # 7) TFLint (antes siempre del plan) – setup acción
+      # 7) TFLint (antes siempre del plan)
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v4
 
@@ -190,9 +202,9 @@ jobs:
           path: ${{ needs.changes.outputs.dir }}/tflint.sarif
           retention-days: 14
 
-  # ────────────────────────────────────────────────────────────────────────────
-  # 3) Plan (idéntico a tus pasos: flags, plan, show, infracost, artifacts)
-  # ────────────────────────────────────────────────────────────────────────────
+  # ──────────────────────────────────────────────────────────────
+  # 3) PLAN (flags + plan + show + infracost + artifacts)
+  # ──────────────────────────────────────────────────────────────
   plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
@@ -201,21 +213,21 @@ jobs:
     env:
       TF_IN_AUTOMATION: "true"
     steps:
-      # 2) Setup Terraform (igual que antes)
+      # 2) Setup Terraform
       - name: Setup Terraform 1.9.7
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.9.7"
           terraform_wrapper: false
 
-      # 3) Auth a GCP via OIDC (igual que antes)
+      # 3) Auth a GCP via OIDC
       - name: Google Auth (OIDC)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      # 8) Construir flags del plan (tu mismo bloque)
+      # 8) Construir flags del plan (conserva tu lógica)
       - name: Build plan flags
         id: flags
         shell: bash
