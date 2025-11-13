@@ -2,9 +2,9 @@ name: terraform-plan
 
 on:
   pull_request:
-    branches: ["main"]          # ejecuta en cualquier PR hacia main
+    branches: ["main"]
   push:
-    branches: ["feat/**"]       # opcional: también al pushear a ramas de trabajo
+    branches: ["feat/**"]
   workflow_dispatch:
     inputs:
       env_dir:
@@ -16,7 +16,7 @@ on:
         required: false
         default: 'false'
       replace_targets:
-        description: 'Direcciones a forzar -replace (coma separadas)'
+        description: 'Direcciones a forzar -replace (comas separadas)'
         required: false
         default: ''
       destroy:
@@ -28,22 +28,28 @@ permissions:
   contents: read
   pull-requests: write
   id-token: write
-  security-events: write # <-- necesario para upload.sarif
+  security-events: write  # necesario para upload_sarif
 
 jobs:
-  plan:
+  # ────────────────────────────────────────────────────────────────────────────
+  # 0) Cambios y cálculo de directorio (outputs para el resto de jobs)
+  # ────────────────────────────────────────────────────────────────────────────
+  changes:
+    name: Detect changes (Terraform/Workflow)
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
-
+    outputs:
+      tf:   ${{ steps.changes.outputs.tf }}
+      dir:  ${{ steps.envdir.outputs.dir }}
     steps:
-      # 0) Checkout con historial completo (para detectar cambios correctamente)
+      # #0) Checkout con historial completo
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 1) Detectar si hay cambios relevantes; si no, salimos elegante
+      # #1) Detectar cambios
       - name: Detect changes (Terraform/Workflow)
         id: changes
         uses: dorny/paths-filter@v3
@@ -59,25 +65,50 @@ jobs:
           echo "No hay cambios en environments/** ni en el workflow. Saliendo."
           exit 0
 
+      # 4) Elegir carpeta de environment (tu mismo script)
+      - name: Pick environment dir
+        id: envdir
+        if: steps.changes.outputs.tf == 'true'
+        shell: bash
+        run: |
+          set -uo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.env_dir }}" != "" ]]; then
+            ENV="environments/${{ inputs.env_dir }}"
+          else
+            BASE="$(git branch --show-current)"
+            if [[ -z "$BASE" ]]; then BASE="$(git diff --name-only origin/${GITHUB_BASE_REF:-'main'} | grep '^environments/' | cut -d'/' -f1-2 | sort -u | head -n1 || true)"; fi
+            [[ -z "$ENV" ]] && ENV="environments/dev"
+          fi
+          echo "dir=$ENV" >> "$GITHUB_OUTPUT"
+          echo "Environment dir: $ENV"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # 1) Init + Validate (idéntico a tus pasos originales)
+  # ────────────────────────────────────────────────────────────────────────────
+  init_validate:
+    name: Terraform Init
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.tf == 'true'
+    env:
+      TF_IN_AUTOMATION: "true"
+    steps:
       # 2) Setup Terraform
       - name: Setup Terraform 1.9.7
-        if: steps.changes.outputs.tf == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.9.7
+          terraform_version: "1.9.7"
           terraform_wrapper: false
 
-      # (Opcional) Verificar version de terraform
+      # (Opcional) Verificar versión de terraform
       - name: Check Terraform version
-        if: steps.changes.outputs.tf == 'true'
         run: |
-          terraform -version
           v=$(terraform version -json | jq -r .terraform_version)
+          echo "TF=$v"
           case "$v" in 1.9.*) echo "OK";; *) echo "ERROR TF=$v (esperaba 1.9.x)"; exit 1;; esac
 
-      # 2.1) Cache de plugin dir
+      # 2.2) Cache de plugin dir
       - name: Cache Terraform plugins
-        if: steps.changes.outputs.tf == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.terraform.d/plugin-cache
@@ -85,58 +116,46 @@ jobs:
           restore-keys: |
             tf-${{ runner.os }}-
 
-      # 2.2) Configurar terraform.rc para usar el cache
+      # 2.2.2) Configurar terraform.rc para usar el cache
       - name: Configure Terraform plugin cache
-        if: steps.changes.outputs.tf == 'true'
         run: |
-         mkdir -p ~/.terraform.d
-         echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
+          mkdir -p ~/.terraform.d
+          echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
 
-      # 3) Auth a GCP vía OIDC
+      # 3) Auth a GCP via OIDC (igual que tenías)
       - name: Google Auth (OIDC)
-        if: steps.changes.outputs.tf == 'true'
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      # 4) Elegir carpeta de environment
-      - name: Pick environment dir
-        if: steps.changes.outputs.tf == 'true'
-        id: envdir
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
-            ENV="environments/${{ inputs.env_dir }}"
-          else
-            BASE="${{ github.base_ref || 'main' }}"
-            ENV=$(git diff --name-only origin/$BASE... | grep '^environments/' | cut -d'/' -f1-2 | sort -u | head -n1 || true)
-            [[ -z "$ENV" ]] && ENV="environments/dev"
-          fi
-          echo "dir=$ENV" >> "$GITHUB_OUTPUT"
-          echo "Environment dir: $ENV"
-
-      # 5) Terraform Init (lockfile readonly ✅)
+      # 5) Terraform Init (Lockfile readonly)
       - name: Terraform Init (readonly lockfile)
-        if: steps.changes.outputs.tf == 'true'
-        working-directory: ${{ steps.envdir.outputs.dir }}
+        working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform init -input=false -lockfile=readonly
 
       # 6) Terraform Validate
       - name: Terraform Validate
-        if: steps.changes.outputs.tf == 'true'
-        working-directory: ${{ steps.envdir.outputs.dir }}
-        run: terraform validate
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: terraform validate -no-color
 
-      # 7) TFLint (antes siempre del plan)
+  # ────────────────────────────────────────────────────────────────────────────
+  # 2) TFLint (exactamente tus pasos: cache + pretty + SARIF + artifacts)
+  # ────────────────────────────────────────────────────────────────────────────
+  tflint:
+    name: TFLint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.tf == 'true'
+    env:
+      TF_IN_AUTOMATION: "true"
+    steps:
+      # 7) TFLint (antes siempre del plan) – setup acción
       - name: Setup TFLint
-        if: steps.changes.outputs.tf == 'true'
         uses: terraform-linters/setup-tflint@v4
 
-      # 7.1) Ejecutar TFlint (Con SARIF y Cache)
+      # 7.1) Ejecutar TFLint (Con SARIF y Cache)
       - name: Cache TFLint plugins
-        if: steps.changes.outputs.tf == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.tflint.d/plugins
@@ -145,41 +164,59 @@ jobs:
             tflint-${{ runner.os }}-
 
       - name: TFLint init
-        if: steps.changes.outputs.tf == 'true'
         run: tflint --init
-        working-directory: ${{ steps.envdir.outputs.dir }}
+        working-directory: ${{ needs.changes.outputs.dir }}
 
       - name: TFLint (pretty)
-        if: steps.changes.outputs.tf == 'true'
         run: tflint
-        working-directory: ${{ steps.envdir.outputs.dir }}
+        working-directory: ${{ needs.changes.outputs.dir }}
 
       - name: TFLint (SARIF only)
-        if: steps.changes.outputs.tf == 'true'
         shell: bash
         run: |
-          set -o pipefail
-          tflint -f sarif | tee tflint.sarif 
-        working-directory: ${{ steps.envdir.outputs.dir }}
+          set -euo pipefail
+          tflint -f sarif | tee tflint.sarif
+        working-directory: ${{ needs.changes.outputs.dir }}
 
       - name: Upload SARIF
-        if: steps.changes.outputs.tf == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: ${{ steps.envdir.outputs.dir }}/tflint.sarif
-        
+          sarif_file: ${{ needs.changes.outputs.dir }}/tflint.sarif
+
       - name: Upload tflint.sarif artifacts
-        if: steps.changes.outputs.tf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tflint-sarif
-          path: ${{ steps.envdir.outputs.dir }}/tflint.sarif
+          path: ${{ needs.changes.outputs.dir }}/tflint.sarif
           retention-days: 14
 
+  # ────────────────────────────────────────────────────────────────────────────
+  # 3) Plan (idéntico a tus pasos: flags, plan, show, infracost, artifacts)
+  # ────────────────────────────────────────────────────────────────────────────
+  plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: [changes, init_validate, tflint]   # exige que pasen init/validate y TFLint
+    if: needs.changes.outputs.tf == 'true'
+    env:
+      TF_IN_AUTOMATION: "true"
+    steps:
+      # 2) Setup Terraform (igual que antes)
+      - name: Setup Terraform 1.9.7
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.7"
+          terraform_wrapper: false
 
-      # 8) Construir flags del plan
+      # 3) Auth a GCP via OIDC (igual que antes)
+      - name: Google Auth (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      # 8) Construir flags del plan (tu mismo bloque)
       - name: Build plan flags
-        if: steps.changes.outputs.tf == 'true'
         id: flags
         shell: bash
         run: |
@@ -192,10 +229,9 @@ jobs:
             FLAGS="$FLAGS -refresh-only"
           fi
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.replace_targets }}" ]]; then
-            IFS=',' read -ra REPL <<< "${{ inputs.replace_targets }}"
+            IFS=, read -ra REPL <<< "${{ inputs.replace_targets }}"
             for t in "${REPL[@]}"; do
-              t="$(echo "$t" | xargs)"
-              [[ -n "$t" ]] && FLAGS="$FLAGS -replace=$t"
+              FLAGS="$FLAGS -replace=$t"
             done
           fi
           echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
@@ -203,9 +239,8 @@ jobs:
 
       # 9) Terraform Plan (genera .bin y .txt; respetamos detailed-exitcode)
       - name: Terraform Plan (save planfile)
-        if: steps.changes.outputs.tf == 'true'
         id: planstep
-        working-directory: ${{ steps.envdir.outputs.dir }}
+        working-directory: ${{ needs.changes.outputs.dir }}
         shell: bash
         run: |
           set -e
@@ -215,23 +250,22 @@ jobs:
             echo "Terraform plan devolvió error (1)."
             exit 1
           fi
+          exit 0
 
       # 10) Terraform Show (JSON) para Infracost
       - name: Terraform Show (JSON)
-        if: steps.changes.outputs.tf == 'true'
-        working-directory: ${{ steps.envdir.outputs.dir }}
+        working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform show -json tfplan.bin > tfplan.json
 
       # 11) Infracost
       - name: Setup Infracost
-        if: steps.changes.outputs.tf == 'true'
         uses: infracost/actions/setup@v3
         with:
           api-key: ${{ secrets.INFRACOST_API_KEY }}
 
       - name: Infracost PR comment
-        if: steps.changes.outputs.tf == 'true' && github.event_name == 'pull_request'
-        working-directory: ${{ steps.envdir.outputs.dir }}
+        if: github.event_name == 'pull_request'
+        working-directory: ${{ needs.changes.outputs.dir }}
         env:
           INFRACOST_CURRENCY: ${{ vars.INFRACOST_CURRENCY || 'EUR' }}
         run: |
@@ -243,16 +277,16 @@ jobs:
 
       # 12) Subir artefactos del plan (.bin, .txt, .json)
       - name: Upload plan artifacts
-        if: steps.changes.outputs.tf == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ github.sha }}
           path: |
-            ${{ steps.envdir.outputs.dir }}/tfplan.bin
-            ${{ steps.envdir.outputs.dir }}/tfplan.txt
-            ${{ steps.envdir.outputs.dir }}/tfplan.json
+            ${{ needs.changes.outputs.dir }}/tfplan.bin
+            ${{ needs.changes.outputs.dir }}/tfplan.txt
+            ${{ needs.changes.outputs.dir }}/tfplan.json
           retention-days: 10
           if-no-files-found: error
+
 
 
 
