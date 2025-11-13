@@ -3,8 +3,13 @@ name: terraform-plan
 on:
   pull_request:
     branches: ["main"]          # PR hacia main
+    paths:
+      - ".github/workflows/Live-Plan.yaml"
   push:
     branches: ["feat/**"]       # pushes a ramas feat/*
+    paths:
+      - ".github/workflows/Live-Plan.yaml"
+      - "environments/**"    # Cuando haya cambios en este entorno
   workflow_dispatch:
     inputs:
       env_dir:
