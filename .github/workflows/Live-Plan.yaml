@@ -224,6 +224,24 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
 
+      # Re-init porque es otro job (runner limpio)
+      - name: Cache Terraform plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            tf-${{ runner.os }}-
+
+      - name: Configure Terraform plugin cache
+        run: |
+          mkdir -p ~/.terraform.d
+          echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
+
+      - name: Terraform Init (readonly lockfile)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: terraform init -input=false -lockfile=readonly
+
       - name: Build plan flags
         id: flags
         shell: bash
@@ -238,9 +256,7 @@ jobs:
           fi
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.replace_targets }}" ]]; then
             IFS=, read -ra REPL <<< "${{ inputs.replace_targets }}"
-            for t in "${REPL[@]}"; do
-              FLAGS="$FLAGS -replace=$t"
-            done
+            for t in "${REPL[@]}"; do FLAGS="$FLAGS -replace=$t"; done
           fi
           echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
           echo "Plan flags: $FLAGS"
