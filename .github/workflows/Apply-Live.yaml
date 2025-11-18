@@ -1,118 +1,203 @@
-name: terraform-apply-from-pr-plan
+name: terraform-apply
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - "environments/**"
+      - "modules/**"
+      - "**/*.tf"
+      - "**/*.tfvars"
+      - "**/.tflint.hcl"
+      - ".github/workflows/Live-Apply.yaml"
   workflow_dispatch:
     inputs:
-      pr_number:
-        description: 'Número del Pull Request'
-        required: true
       env_dir:
-        description: 'Directorio de entorno (p. ej., dev)'
+        description: 'Environment to apply (folder under environments/)'
         required: false
-        default: 'dev'
+        default: 'prod'
+
+permissions:
+  contents: read
+  id-token: write
+
+# Un solo apply por rama (no cancelar si ya está en curso)
+concurrency:
+  group: apply-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  apply:
+  # ──────────────────────────────────────────────────────────────
+  # 0) Detectar cambios y resolver directorio de entorno
+  # ──────────────────────────────────────────────────────────────
+  changes:
+    name: Detect changes (Terraform/Workflow)
     runs-on: ubuntu-latest
-    environment:
-      name: dev            # Protege con Required reviewers en Settings → Environments → dev
-    permissions:
-      id-token: write
-      contents: read
-      pull-requests: read
-    concurrency:
-      group: tf-apply-${{ github.ref }}-${{ inputs.env_dir }}
-      cancel-in-progress: false
-
+    outputs:
+      tf:  ${{ steps.filter.outputs.tf }}
+      dir: ${{ steps.envdir.outputs.dir }}
+      env: ${{ steps.envdir.outputs.env }}
     steps:
-      - name: Instalar GitHub CLI
-        run: |
-          type -p gh >/dev/null || { sudo apt-get update && sudo apt-get install -y gh; }
-          gh --version
-
-      - name: Resolver datos del PR (rama y SHA)
-        id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          JSON=$(gh pr view ${{ inputs.pr_number }} --json headRefName,headSha,headRepository)
-          HEAD_REF=$(echo "$JSON" | jq -r '.headRefName')
-          HEAD_SHA=$(echo "$JSON" | jq -r '.headSha')
-          echo "ref=$HEAD_REF"   >> $GITHUB_OUTPUT
-          echo "sha=$HEAD_SHA"   >> $GITHUB_OUTPUT
-          echo "PR head ref: $HEAD_REF"
-          echo "PR head sha: $HEAD_SHA"
-
-      - name: Encontrar el último run exitoso de terraform-plan para esa rama/commit
-        id: run
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          # Lista los últimos runs del workflow "terraform-plan" en esa rama
-          IDS=$(gh run list --workflow "terraform-plan" --branch "${{ steps.pr.outputs.ref }}" \
-                 --json databaseId,headSha,conclusion,updatedAt \
-                 --jq '.[] | select(.headSha=="${{ steps.pr.outputs.sha }}" and .conclusion=="success") | .databaseId' \
-                 | head -n1)
-          if [ -z "$IDS" ]; then
-            echo "No se encontró un run exitoso de 'terraform-plan' para el commit ${{ steps.pr.outputs.sha }}."
-            echo "Asegúrate de haber ejecutado el plan en el PR y que haya finalizado en success."
-            exit 1
-          fi
-          echo "id=$IDS" >> $GITHUB_OUTPUT
-          echo "Plan run id: $IDS"
-
-      - name: Checkout EXACTO del commit del PR (mismo código que se planificó)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr.outputs.sha }}
+          fetch-depth: 0
 
-      - name: Setup Terraform
+      - name: Paths filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            tf:
+              - 'environments/**'
+              - '.github/workflows/Live-Apply.yaml'
+
+      - name: No relevant changes — skip
+        if: steps.filter.outputs.tf != 'true'
+        run: |
+          echo "Sin cambios de Terraform ni del workflow de apply. Saliendo."
+          exit 0
+
+      - name: Pick environment dir (safe)
+        id: envdir
+        if: steps.filter.outputs.tf == 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # Default seguro
+          ENV="environments/prod"
+
+          # Si se lanzó manual con input, úsalo
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
+            ENV="environments/${{ inputs.env_dir }}"
+          else
+            # Deducir primer entorno tocado respecto a main (no crítico, pero ayuda)
+            changed_env="$(git diff --name-only "origin/main~1" "origin/main" 2>/dev/null \
+              | awk -F/ '/^environments\//{print $1"/"$2}' | sort -u | head -n1 || true)"
+            if [[ -n "$changed_env" ]]; then
+              ENV="$changed_env"
+            fi
+          fi
+
+          ENV_NAME="$(basename "$ENV")"
+          echo "dir=$ENV" >> "$GITHUB_OUTPUT"
+          echo "env=$ENV_NAME" >> "$GITHUB_OUTPUT"
+          echo "Environment dir: $ENV ; env name: $ENV_NAME"
+
+  # ──────────────────────────────────────────────────────────────
+  # 1) PLAN en main (mismo código que vamos a aplicar)
+  # ──────────────────────────────────────────────────────────────
+  plan:
+    name: Terraform Plan (main)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.tf == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terraform 1.9.7
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.7"
+          terraform_wrapper: false
 
-      - name: Auth a GCP (OIDC)
+      - name: Google Auth (OIDC)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
-          export_environment_variables: true
+          service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
 
-      - name: Descargar artefacto del plan del run del PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache TF plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: |
+            tf-${{ runner.os }}-
+
+      - name: Configure TF plugin cache
         run: |
-          set -euo pipefail
-          mkdir -p "artifacts/${{ inputs.env_dir }}"
-          # Descarga TODOS los artefactos de ese run (incluye tfplan.bin/txt)
-          gh run download ${{ steps.run.outputs.id }} --dir "artifacts/${{ inputs.env_dir }}"
-          echo "Contenido descargado:"
-          find "artifacts/${{ inputs.env_dir }}" -maxdepth 2 -type f -print
+          mkdir -p ~/.terraform.d
+          echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
 
-          # Localiza rutas del plan
-          PLAN_BIN=$(find "artifacts/${{ inputs.env_dir }}" -name tfplan.bin -print -quit || true)
-          PLAN_TXT=$(find "artifacts/${{ inputs.env_dir }}" -name tfplan.txt -print -quit || true)
+      - name: Terraform Init (readonly lockfile)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: terraform init -input=false -lockfile=readonly
 
-          if [ -z "$PLAN_BIN" ] || [ -z "$PLAN_TXT" ]; then
-            echo "No se encontraron tfplan.bin / tfplan.txt en los artefactos."
-            exit 1
-          fi
-
-          # Copia el plan al directorio del entorno para usar rutas estándar
-          mkdir -p "environments/${{ inputs.env_dir }}"
-          cp "$PLAN_BIN" "environments/${{ inputs.env_dir }}/tfplan.bin"
-          cp "$PLAN_TXT" "environments/${{ inputs.env_dir }}/tfplan.txt"
-
-      - name: Mostrar un resumen del plan (texto)
+      - name: Terraform Plan (save)
+        id: planfile
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
         run: |
-          echo "=== tfplan.txt (primeras 200 líneas) ==="
-          sed -n '1,200p' environments/${{ inputs.env_dir }}/tfplan.txt || true
+          set -e
+          terraform plan -input=false -no-color -out=tfplan.bin
+          terraform show -no-color tfplan.bin > tfplan.txt
+          terraform show -json tfplan.bin > tfplan.json
 
-      - name: Terraform Init (mismo backend/state)
-        working-directory: environments/${{ inputs.env_dir }}
-        run: terraform init -input=false
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: |
+            ${{ needs.changes.outputs.dir }}/tfplan.bin
+            ${{ needs.changes.outputs.dir }}/tfplan.txt
+            ${{ needs.changes.outputs.dir }}/tfplan.json
+          retention-days: 7
 
-      - name: Terraform Apply (usando EXACTAMENTE el plan del PR)
-        working-directory: environments/${{ inputs.env_dir }}
-        run: terraform apply -input=false -auto-approve tfplan.bin
+  # ──────────────────────────────────────────────────────────────
+  # 2) Gate de aprobación (Environment con Required reviewers)
+  # ──────────────────────────────────────────────────────────────
+  approve_gate:
+    name: Await approval (${{ needs.changes.outputs.env }})
+    runs-on: ubuntu-latest
+    needs: plan
+    if: needs.changes.outputs.tf == 'true'
+    environment:
+      name: ${{ needs.changes.outputs.env }}     # crea Environments (p.ej. prod/dev) con Required reviewers
+      url: https://console.cloud.google.com/
+    steps:
+      - run: echo "Esperando aprobación del environment '${{ needs.changes.outputs.env }}'…"
+
+  # ──────────────────────────────────────────────────────────────
+  # 3) APPLY del tfplan generado en este mismo run
+  # ──────────────────────────────────────────────────────────────
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [changes, approve_gate]
+    if: needs.changes.outputs.tf == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terraform 1.9.7
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.7"
+          terraform_wrapper: false
+
+      - name: Google Auth (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: ${{ needs.changes.outputs.dir }}
+
+      - name: Terraform Init (reconfigure)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: terraform init -input=false -lockfile=readonly -reconfigure
+
+      - name: Terraform Apply (approved plan)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: terraform apply -input=false -lock-timeout=5m tfplan.bin
 

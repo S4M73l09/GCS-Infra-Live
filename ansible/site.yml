@@ -1,0 +1,75 @@
+---
+- name: Configurar stack de monitoring (Prometheus + Alertmanager + Grafana)
+  hosts: all
+  become: true
+
+  vars:
+    monitoring_base_dir: /opt/monitoring
+
+  tasks:
+    - name: Instalar Docker y plugin Compose
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Asegurar que Docker está activo
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Crear carpeta base de monitoring
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copiar docker-compose.yml
+      ansible.builtin.copy:
+        src: files/monitoring/docker-compose.yml
+        dest: "{{ monitoring_base_dir }}/docker-compose.yml"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar configuración de Prometheus
+      ansible.builtin.copy:
+        src: files/monitoring/prometheus/
+        dest: "{{ monitoring_base_dir }}/prometheus/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Crear carpeta de Alertmanager
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}/alertmanager"
+        state: directory
+        mode: "0755"
+
+    - name: Plantilla de configuracion de Alertmanager
+      ansible.builtin.template:
+        src: monitoring/alertmanager.yml.j2
+        dest: "{{ monitoring_base_dir }}/alertmanager/alertmanager.yml"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar provisioning de Grafana
+      ansible.builtin.copy:
+        src: files/monitoring/grafana/
+        dest: "{{ monitoring_base_dir }}/grafana/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Asegurar que el stack de monitoring está levantado
+      community.docker.docker_compose:
+        project_src: "{{ monitoring_base_dir }}"
+        state: present
+        remove_orphans: true
+
+  handlers:
+    - name: restart monitoring stack
+      community.docker.docker_compose:
+        project_src: "{{ monitoring_base_dir }}"
+        state: present
+        remove_orphans: true

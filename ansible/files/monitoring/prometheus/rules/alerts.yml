@@ -1,0 +1,105 @@
+groups:
+  - name: infra_basic
+    rules:
+      # Cualquier target caído (de cualquier job)
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Instancia caída: {{ $labels.instance }}"
+          description: "El target {{ $labels.job }} / {{ $labels.instance }} no responde desde hace más de 1 minuto."
+
+      # Prometheus no se scrapea a sí mismo
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus está caído"
+          description: "El propio Prometheus (job=prometheus) no responde desde hace más de 1 minuto."
+
+      # Alertmanager no responde
+      - alert: AlertmanagerDown
+        expr: up{job="alertmanager"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Alertmanager está caído"
+          description: "Alertmanager (job=alertmanager) no responde desde hace más de 1 minuto."
+
+      # Fallos en la evaluación de reglas de Prometheus
+      - alert: PrometheusRuleEvaluationFailures
+        expr: increase(prometheus_rule_evaluation_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fallos en la evaluación de reglas"
+          description: "Prometheus ha tenido errores evaluando reglas en los últimos 5 minutos."
+
+      # Fallos al enviar notificaciones desde Alertmanager
+      - alert: AlertmanagerNotificationFailures
+        expr: increase(alertmanager_notifications_failed_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Fallos de notificación en Alertmanager"
+          description: "Alertmanager ha fallado al enviar notificaciones en los últimos 5 minutos."
+
+  - name: host_health
+    rules:
+      # CPU alta (promedio por instancia > 80% durante 5 minutos)
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso de CPU alto en {{ $labels.instance }}"
+          description: "El uso medio de CPU ha sido superior al 80% durante más de 5 minutos."
+
+      # RAM alta (uso > 80% durante 5 minutos)
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uso de memoria alto en {{ $labels.instance }}"
+          description: "El uso de memoria ha sido superior al 80% durante más de 5 minutos."
+
+      # Disco casi lleno (uso > 85% en sistemas reales, no tmpfs, etc.)
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disco casi lleno en {{ $labels.instance }}"
+          description: "El sistema de archivos {{ $labels.mountpoint }} tiene más del 85% ocupado."
+
+      # Disco en solo lectura (muy serio)
+      - alert: FilesystemReadOnly
+        expr: node_filesystem_readonly{fstype!~"tmpfs|overlay|squashfs"} == 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sistema de archivos en solo lectura en {{ $labels.instance }}"
+          description: "El sistema de archivos {{ $labels.mountpoint }} está montado en solo lectura."
+
+      # node_exporter caído
+      - alert: NodeExporterDown
+        expr: up{job="node_exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "node_exporter caído en {{ $labels.instance }}"
+          description: "El exporter de nodo (job=node_exporter) no responde desde hace más de 1 minuto."
+
