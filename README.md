@@ -1,4 +1,4 @@
-# Infra LIVE – Rama de pruebas feat/dev (entorno dev)
+# Infra LIVE ES – Rama de pruebas feat/dev (entorno dev) ES -> [EN](README.en.md)
 
 Este documento deja constancia exacta de lo que hace la rama feat/dev: flujo de plan en PR, artefacto del plan, apply manual desde el plan (sin tocar main), estructura mínima de Terraform y requisitos en GCP/GitHub.
 
