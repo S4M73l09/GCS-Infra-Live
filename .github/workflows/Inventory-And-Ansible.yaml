@@ -2,7 +2,7 @@ name: inventory-and-ansible
 
 on:
   workflow_run:
-    workflows: ["terraform-apply"]   # nombre exacto del workflow de apply
+    workflows: ["terraform-apply"] # nombre exacto del workflow de apply
     types: [completed]
 
 permissions:
@@ -19,7 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [dev]   # añade 'prod' si queremos cubrir producción también
+        env: [dev] # añade 'prod' si queremos cubrir producción también
+
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -42,22 +43,24 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ansible
+
           gcloud compute instances list \
             --filter="labels.env=${{ matrix.env }} AND status=RUNNING" \
             --format="value(name,zone,project)" \
-          | awk '{print $1"."$2"."$3}' > ansible/hosts.list
+          | awk '{print $1","$2","$3}' > ansible/hosts.list
 
           { echo "[gce]"; cat ansible/hosts.list; } > ansible/hosts.ini
 
-          printf '%s\n' \
-            '[defaults]' \
-            'inventory = ansible/hosts.ini' \
-            'host_key_checking = False' \
-            '[ssh_connection]' \
-            'ssh_args = -F ~/.ssh/config' > ansible/ansible.cfg
+          printf "%s\n" \
+            "[defaults]" \
+            "inventory = ansible/hosts.ini" \
+            "host_key_checking = False" \
+            "[ssh_connection]" \
+            "ssh_args = -F ~/.ssh/config" > ansible/ansible.cfg
 
           if grep -Eq '([0-9]{1,3}\.){3}[0-9]{1,3}' ansible/hosts.ini; then
             echo "ERROR: hosts.ini contiene IPs. Usa FQDN GCE."
+            cat ansible/hosts.ini
             exit 1
           fi
 
@@ -76,9 +79,10 @@ jobs:
     strategy:
       matrix:
         env: [dev]
+
     steps:
       - name: Echo artifact name
-        run: 'echo "Artifact listo: ansible-inventory-${{ matrix.env }}"'
+        run: echo "Artifact listo: ansible-inventory-${{ matrix.env }}"
 
   run_ansible:
     needs: generate_inventory
@@ -86,6 +90,7 @@ jobs:
     strategy:
       matrix:
         env: [dev]
+
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -122,10 +127,10 @@ jobs:
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
           ALERT_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
-          ALERT_SMTP_FROM: ${{ secrets.ALERT_SMTP_FROM }}
-          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
-          ALERT_SMTP_PASS: ${{ secrets.ALERT_SMTP_PASS }}
-          ALERT_SMTP_TO:   ${{ secrets.ALERT_SMTP_TO }}
+          ALERT_SMTP_FROM:      ${{ secrets.ALERT_SMTP_FROM }}
+          ALERT_SMTP_USER:      ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASS:      ${{ secrets.ALERT_SMTP_PASS }}
+          ALERT_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
         run: |
           ansible-playbook ansible/site.yml \
             -e alertmanager_smtp_smarthost="$ALERT_SMTP_SMARTHOST" \
@@ -133,3 +138,4 @@ jobs:
             -e alertmanager_smtp_user="$ALERT_SMTP_USER" \
             -e alertmanager_smtp_pass="$ALERT_SMTP_PASS" \
             -e alertmanager_smtp_to="$ALERT_SMTP_TO"
+
