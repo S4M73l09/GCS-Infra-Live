@@ -1,4 +1,4 @@
-# GCS-Infra-Live
+# GCS-Infra-Live ES -> [EN](README.en.md)
 
 ## Infra Apply + Ansible (post-apply) en rama main
 
