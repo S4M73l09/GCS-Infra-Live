@@ -121,7 +121,7 @@ jobs:
       - name: Run Ansible
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
-          ALERT_SMTP_SMARTHOST: ${{ secretsALERT_SMTP_SMARTHOST }}
+          ALERT_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
           ALERT_SMTP_FROM: ${{ secrets.ALERT_SMTP_FROM }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASS: ${{ secrets.ALERT_SMTP_PASS }}
