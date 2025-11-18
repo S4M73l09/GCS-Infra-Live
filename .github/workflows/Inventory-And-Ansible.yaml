@@ -78,7 +78,7 @@ jobs:
         env: [dev]
     steps:
       - name: Echo artifact name
-        run: echo 'Artifact listo: ansible-inventory-${{ matrix.env }}'
+        run: 'echo "Artifact listo: ansible-inventory-${{ matrix.env }}"'
 
   run_ansible:
     needs: generate_inventory
