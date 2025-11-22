@@ -65,6 +65,9 @@ This document summarizes the changes made on `main` to safely run Ansible config
 ansible/
   site.yml
   requirements.yml
+  web/
+    index.html
+    style.css
   files/
     monitoring/
       docker/
@@ -108,6 +111,24 @@ ansible/
 
    * Brings up (or updates) the stack with docker compose in an idempotent way.
 
+## Folder structure in the VM
+```makefile
+- `/opt/monitoring`
+  - `docker-compose.yml` (Prometheus, Alertmanager, Grafana, Blackbox, node-exporter, web)
+  - `prometheus/`
+    - `prometheus.yml`
+    - `rules/alerts.yml`
+  - `alertmanager/`
+    - `alertmanager.yml`
+  - `grafana/`
+    - provisioning, datasources, dashboards, etc.
+- `/opt/web01`
+  - `index.html`
+  - `styles.css`
+  - (cualquier otro estático de la página)
+```  
+
+
 ## Deployed stack
 
 * `prometheus`
@@ -116,11 +137,36 @@ ansible/
 
 * `node-exporter`
 
+* `web(simple hosting)`
+
 * `grafana` (with Prometheus datasource preconfigured)
 
 * Basic alert rules + host health
 
 * Alerts sent by email via Alertmanager
+
+## Ansible site.yml
+
+The playbook in charge of:
+
+1. Install Docker + compose plugin.
+
+2. Create directories
+   * `monitoring_base_dir: /opt/monitoring`
+   * `web01_base_dir: /opt/web01`
+
+3. Copy:
+   * `docker-compose.yml` and files of Prometheus, Alertmanager and Grafana in `/opt/monitoring`.
+   *  Content from `files/web/` (HTML/CSS) to `opt/web01`.
+
+4. Lift or update the stack:
+```yaml
+community.docker.docker_compose_v2:
+  project_src: "{{ monitoring_base_dir }}"
+  state: present
+  remove_orphans: true
+```
+When the web or stack files change, the `restart monitoring stack` handler is notified to recreate the containers.
 
 ## 🐳 Docker stack: docker-compose.yml
 
@@ -128,13 +174,31 @@ Services defined in `docker-compose.yml`
 
 Path: `ansible/files/monitoring/docker/docker-compose.yml`.
 
-* prometheus
+* `prometheus`-> Collect metrics
 
-* alertmanager
+* `alertmanager` -> manage alerts
 
-* node-exporter
+* `node-exporter` -> system metrics (CPU, RAM, Disk, Network)
 
-* grafana
+* `grafana` -> visulization of metrics
+
+* `web (Nginx)` -> the static website works from `opt/web01`
+
+* `blackbox` -> check the HTTP availability of the website
+
+## Docker Networks
+
+* `monitoring` -> Prometheus, Grafana, Alertmanager, node-exporter, blackbox.  
+
+* `web-01` -> Nginx (`web`) + blackbox (to be able to probe `http://web:80`).
+
+The `web` service mounts:
+
+```yaml
+volumes:
+  - /opt/web01:/usr/share/nginx/html:ro
+  ```
+
 
 ## 📊 Prometheus: prometheus.yml + rules
 
@@ -162,6 +226,14 @@ It includes two rule groups:
 
 * `host_health`: host health based on node_exporter metrics (CPU, memory, disk, filesystem read-only, etc.).
 
+*  In addition to adding `blackbox` to monitor the website.
+    * blackbox interno:
+      * Target: `http://web:80`
+    * blackbox externo:
+      * Target: `https://Domain.com`
+
+Both jobs use `relabel_configs` to send requests to the `blackbox-exporter` in `blackbox:9115`.
+
 ## 📬 Alertmanager: template with SMTP and GitHub Secrets
 
 Path: `ansible/templates/monitoring/alertmanager.yml.j2`.
@@ -185,6 +257,31 @@ In Settings → `Secrets and variables` → `Actions`:
 * `ALERT_SMTP_TO` → destination email (if omitted, ALERT_SMTP_FROM is used)
 
 The Ansible step in the workflow passes these secrets to the playbook as `-e` variables, which the template then uses to generate `alertmanager.yml` on the VM.
+
+## Ecstatic web
+
+* Nginx serves a simple portfolio page/project explanation:
+  * Infrastructure description (Terraform + GCP + Github Actions + Ansible + Docker)
+  * Youtube video embeds showing the Bootstrap/repo-Live of the infrastructure
+  * Links to the Bootstrap and Infra-Live repositories
+* HTML/CSS content lives in the repo under `ansible/web` and is copied to `/opt/web01` using Ansible.
+
+## Local validation (WSL)
+
+Tools used to validate configuration before deploying:
+
+* Ansible
+  * `ansible-playbook site.yml --syntax-check`
+
+* Prometheus
+   * `promtool check config files/monitoring/prometheus/prometheus.yml`
+   * `promtool check rules files/monitoring/prometheus/rules/alerts.yml`
+
+* Docker-compose
+   * `docker-compose config` (since `files/monitoring/docker`)
+
+* YAML linting
+   * `yamllint` about `prometheus.yml`and `alerts.yml` to clean spaces and comments
 
 ## Artifacts and visibility
 

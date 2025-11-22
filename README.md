@@ -52,6 +52,9 @@ Este documento resume los cambios realizados en main para ejecutar configuracion
 ansible/
   site.yml
   requirements.yml
+  web/
+    index.html
+    style.css
   files/
     monitoring/
       docker/
@@ -86,14 +89,57 @@ ansible/
    - Renderiza la configuración de Alertmanager desde una plantilla usando **GitHub Secrets**.
    - Levanta (o actualiza) el stack con `docker compose` de forma idempotente.
 
+## Estructura de carpetas en la VM
+
+```makefile
+- `/opt/monitoring`
+  - `docker-compose.yml` (Prometheus, Alertmanager, Grafana, Blackbox, node-exporter, web)
+  - `prometheus/`
+    - `prometheus.yml`
+    - `rules/alerts.yml`
+  - `alertmanager/`
+    - `alertmanager.yml`
+  - `grafana/`
+    - provisioning, datasources, dashboards, etc.
+- `/opt/web01`
+  - `index.html`
+  - `styles.css`
+  - (cualquier otro estático de la página)
+```
+
+
 ## Stack desplegado:
 
 - `prometheus`
 - `alertmanager`
 - `node-exporter`
+- `web (hosting simple)`
 - `grafana` (con datasource de Prometheus preconfigurado)
 - Reglas de alertas básicas + salud del host
 - Alertas enviadas por correo vía Alertmanager
+
+## Ansible site.yml
+
+El playbook encargado de:
+
+1. Instalar Docker + plugin de compose.
+
+2. Crear directorios:
+   * `monitoring_base_dir: /opt/monitoring`
+   * `web01_base_dir: /opt/web01`
+
+3. Copiar:
+   * `docker-compose.yml` y ficheros de Prometheus, Alertmanager y Grafana a `/opt/monitoring`.
+   * Contenido de `files/web/` (HTML/CSS) a `/opt/web01`.
+
+4. Levantar o actualizar el stack:
+```yaml
+community.docker.docker_compose_v2:
+  project_src: "{{ monitoring_base_dir }}"
+  state: present
+  remove_orphans: true
+```
+Cuando cambian los archivos de la web o del stack, se notifica al handler `restart monitoring stack` para recrear los contenedores.
 
 ## 🐳 Stack Docker: docker-compose.yml
 
@@ -101,10 +147,25 @@ Servicios desplegados en el `docker-compose.yml`
 
 Ruta: `ansible/files/monitoring/docker/docker-compose.yml`.
 
-* prometheus
-* alertmanager
-* node-exporter
-* grafana
+* `prometheus` -> recolecta métricas 
+* `alertmanager` -> gestiona las alertas
+* `node-exporter` -> métricas de sistema (CPU, RAM, disco, red)
+* `grafana` -> visualizacion de metricas
+* `web (Nginx)` -> sirve la web estática desde `/opt/web01` 
+* `blackbox` -> Comprueba la disponibilidad HTTP de la web
+
+## Redes Docker
+
+* `monitoring` -> prometheus, Grafana, Alertmanager, node-exporter, blackbox.
+
+* `web-01` -> Nginx (`web`) + blackbox (para poder sondear `http://web:80`).
+
+El servicio `web` monta:
+
+```yaml
+volumes:
+  - /opt/web01:/usr/share/nginx/html:ro
+  ```  
 
 ## 📊 Prometheus: prometheus.yml + reglas
 
@@ -130,6 +191,14 @@ Incluye dos grupos de reglas:
 
 * `infra_basic`: estado general de targets, Prometheus y Alertmanager.
 * `host_health`: salud del host basada en métricas de `node_exporter` (**CPU**, **memoria**, **disco**, **filesystem read-only**, etc.).
+
+* Ademas de añadir `blackbox` para la monitorizacion de la pagina web.  
+   * blackbox interno:  
+     * Target: `http://web:80`  
+   * blackbox externo o publico(Cuando haya dominio + cloudflare):  
+     * Target: `https://Nuestro-dominio.com`  
+
+Ambos jobs usan `relabel_configs` para enviar las peticiones al `blackbox-exporter` en `blackbox:9115`.
 
 ## 📈 Grafana: datasource provisioning
 
@@ -160,14 +229,40 @@ En Settings → `Secrets and variables` → `Actions`:
 
 El step de Ansible en el workflow pasa estos secrets al playbook como variables -e, que la plantilla usa para generar `alertmanager.yml` en la VM.
 
+## Web estática
+
+* Nginx sirve una página simple de portfolio/explicacion del proyecto:
+   * Descripcion de la infraestructura (Terraform + GCP + Github Action + Ansible + Docker)
+   * Embeds de video de youtube mostrando el Bootstrap/repo-Live de la infraestructura
+   * Enlaces a los repositorios de ***Bootstrap*** y ***Infra-Live***
+* El contenido HTML/CSS vive en el repo bajo `ansible/web` y se copia a `/opt/web01` mediante Ansible.
+
+## Validacíon local (WSL)
+
+Herramientas usadas para validar la configuracion antes de desplegar:
+
+*  Ansible  
+   * `ansible-playbook site.yml --syntax-check`
+
+* Prometheus
+   * `promtool check config files/monitoring/prometheus/prometheus.yml`
+   * `promtool check rules files/monitoring/prometheus/rules/alerts.yml`
+
+* Docker-compose
+   * `docker-compose config` (desde `files/monitoring/docker`)
+
+* YAML linting
+   * `yamllint` sobre `prometheus.yml` y `alerts.yml` para limpiar espacios y comentarios
+
 ## Artefacts y visibilidad
 * Inventario y cfg quedan guardados como artifact:  
 `ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg`
 
 * Puedes descargarlo desde la pestaña ***Actions*** del run correspondiente.
 
-## Buenas prácticas que seguimos
+## Buenas prácticas que hemos seguido
 * Sin llaves SSH ni 22 público: acceso por OS Login + IAP.
 * Inventario efímero (on-the-fly) y sin IPs (solo FQDN GCE).
 * Concurrencia en el workflow para evitar solapes.
 * Jobs separados para máxima visibilidad (generate → publish → apply).
+

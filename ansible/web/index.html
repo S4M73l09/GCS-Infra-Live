@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Portfolio DevOps - Infraestructura en GCP</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-content">
+      <h1>Infraestructura Automatizada en Google Cloud</h1>
+      <p class="subtitle">
+        Terraform · GitHub Actions · Ansible · Docker · Prometheus · Grafana · Cloudflare
+      </p>
+      <p class="tagline">
+        Proyecto práctico de infraestructura real, desplegado y configurado de forma 100% automatizada.
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <!-- Sección: Resumen del proyecto -->
+    <section class="section">
+      <h2>Resumen del proyecto</h2>
+      <p>
+        Esta máquina virtual forma parte de un entorno <strong>GCP "live"</strong> gestionado con
+        <strong>Terraform</strong>. El despliegue de la infraestructura, la configuración del sistema
+        y los servicios que ves aquí están integrados en un flujo de trabajo DevOps completo:
+      </p>
+      <ul>
+        <li><strong>Terraform</strong> para crear la infraestructura (VM, red, firewall, etc.).</li>
+        <li><strong>GitHub Actions</strong> para ejecutar <em>plan</em> y <em>apply</em> de forma controlada.</li>
+        <li><strong>Ansible</strong> para la configuración automática de la VM y despliegue de Docker.</li>
+        <li><strong>Docker + docker-compose</strong> para levantar servicios como Grafana, Prometheus y esta web.</li>
+        <li><strong>Prometheus + Blackbox + node_exporter</strong> para monitorizar tanto la VM como la propia página.</li>
+        <li><strong>Cloudflare</strong> como capa de protección y publicación mediante dominio propio.</li>
+      </ul>
+    </section>
+
+    <!-- Sección: Arquitectura -->
+    <section class="section">
+      <h2>Arquitectura</h2>
+      <p>
+        El flujo general del proyecto es el siguiente:
+      </p>
+      <ol>
+        <li>
+          El repositorio de <strong>bootstrap</strong> define identidades, permisos y configuración inicial necesaria
+          para desplegar la infraestructura.
+        </li>
+        <li>
+          El repositorio de <strong>infra live</strong> define la infraestructura real: redes, VM, reglas de firewall,
+          backends remotos, etc.
+        </li>
+        <li>
+          Un pipeline de <strong>GitHub Actions</strong> ejecuta las fases de <code>terraform fmt</code>,
+          <code>validate</code>, <code>plan</code> y <code>apply</code>, usando autenticación OIDC.
+        </li>
+        <li>
+          Una vez creada la VM, <strong>Ansible</strong> la configura: instalación de Docker, despliegue de
+          Prometheus, Grafana, Blackbox y esta web estática.
+        </li>
+        <li>
+          <strong>Cloudflare</strong> publica el servicio por HTTPS y actúa como capa de protección y caché.
+        </li>
+      </ol>
+    </section>
+
+    <!-- Sección: Vídeos -->
+    <section class="section">
+      <h2>Vídeos del proyecto</h2>
+
+      <div class="video-grid">
+        <div class="video-card">
+          <h3>Demo completa de la infraestructura</h3>
+          <!-- Sustituye VIDEO_ID_1 por el ID real del vídeo de YouTube -->
+          <div class="video-wrapper">
+            <iframe
+              src="https://www.youtube.com/embed/VIDEO_ID_1"
+              title="Demo Infraestructura en GCP"
+              frameborder="0"
+              allowfullscreen
+            ></iframe>
+          </div>
+          <p class="video-links">
+            <a href="https://www.youtube.com/watch?v=VIDEO_ID_1" target="_blank" rel="noreferrer">
+              Abrir vídeo en YouTube
+            </a>
+          </p>
+        </div>
+
+        <div class="video-card">
+          <h3>Pipeline CI/CD (Terraform + GitHub Actions)</h3>
+          <!-- Sustituye VIDEO_ID_2 por el ID real del vídeo de YouTube -->
+          <div class="video-wrapper">
+            <iframe
+              src="https://www.youtube.com/embed/VIDEO_ID_2"
+              title="Pipeline CI/CD"
+              frameborder="0"
+              allowfullscreen
+            ></iframe>
+          </div>
+          <p class="video-links">
+            <a href="https://www.youtube.com/watch?v=VIDEO_ID_2" target="_blank" rel="noreferrer">
+              Abrir vídeo en YouTube
+            </a>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sección: Observabilidad -->
+    <section class="section">
+      <h2>Monitorización y observabilidad</h2>
+      <p>
+        La infraestructura incluye un stack de observabilidad basado en <strong>Prometheus</strong> y
+        <strong>Grafana</strong>:
+      </p>
+      <ul>
+        <li><strong>Prometheus</strong> recolecta métricas de:
+          <ul>
+            <li><code>node_exporter</code> &rarr; salud de la VM (CPU, memoria, disco, red).</li>
+            <li><code>blackbox-exporter</code> &rarr; estado de esta página (HTTP 2xx, latencia, etc.).</li>
+            <li>Otros endpoints/servicios internos que se añadan en el futuro.</li>
+          </ul>
+        </li>
+        <li><strong>Grafana</strong> muestra dashboards personalizados para el entorno.</li>
+      </ul>
+      <p>
+        De esta forma se monitoriza tanto la infraestructura interna como la experiencia externa a través del dominio
+        publicado mediante Cloudflare.
+      </p>
+    </section>
+
+    <!-- Sección: Repositorios -->
+    <section class="section">
+      <h2>Código fuente</h2>
+      <p>
+        El código de este proyecto está disponible en GitHub:
+      </p>
+      <ul>
+        <li>
+          <strong>Repositorio Bootstrap:</strong>
+          <a href="https://github.com/S4M73l09/GCS-Bootstrap---Live"_blank" rel="noreferrer">
+            github.com/TU_USUARIO/TU_REPO_BOOTSTRAP
+          </a>
+        </li>
+        <li>
+          <strong>Repositorio Infra Live:</strong>
+          <a href="https://github.com/S4M73l09/GCS-Infra-Live" target="_blank" rel="noreferrer">
+            github.com/TU_USUARIO/TU_REPO_LIVE
+          </a>
+        </li>
+      </ul>
+    </section>
+
+    <!-- Sección: Contacto -->
+    <section class="section">
+      <h2>Contacto</h2>
+      <p>
+        Si te interesa este tipo de automatización de infraestructuras y pipelines DevOps, puedes contactar conmigo:
+      </p>
+      <ul>
+        <li>Email: <a href="mailto:saminfradevops@gmail.com">Mi correo </a></li>
+        <li>GitHub: <a href="https://github.com/S4M73l09" target="_blank" rel="noreferrer">Usuario de Github</a></li>
+        <!-- Añade si quieres LinkedIn, Malt, etc. -->
+      </ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>© 2025 · Portfolio DevOps Cloud · Infraestructura en Google Cloud</p>
+  </footer>
+</body>
+</html>

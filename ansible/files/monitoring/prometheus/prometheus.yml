@@ -1,3 +1,4 @@
+---
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -14,6 +15,37 @@ scrape_configs:
   - job_name: "node_exporter"
     static_configs:
       - targets: ["node-exporter:9100"]
+    
+   # blackbox interno: http://web:80 ---
+  - job_name: 'blackbox_http_internal'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: 
+          - http://web:80
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
+
+  - job_name: 'blackbox_http_public'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://tudominio.com   # Cambiar en el futuro por dominio real
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115
 
 rule_files:
   - "/etc/prometheus/rules/*.yml"

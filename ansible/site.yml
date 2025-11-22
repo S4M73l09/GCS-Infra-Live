@@ -1,10 +1,11 @@
 ---
-- name: Configurar stack de monitoring (Prometheus + Alertmanager + Grafana)
+- name: Configurar stack de monitoring (Web + Prometheus + Alertmanager + Grafana)
   hosts: all
   become: true
 
   vars:
     monitoring_base_dir: /opt/monitoring
+    web01_base_dir: /opt/web01
 
   tasks:
     - name: Instalar Docker y plugin Compose
@@ -27,9 +28,15 @@
         state: directory
         mode: "0755"
 
+    - name: Crear carpeta base de web
+      ansible.builtin.file:
+        path: "{{ web01_base_dir  }}"
+        state: directory
+        mode: "0755"
+
     - name: Copiar docker-compose.yml
       ansible.builtin.copy:
-        src: files/monitoring/docker-compose.yml
+        src: files/monitoring/docker/docker-compose.yml
         dest: "{{ monitoring_base_dir }}/docker-compose.yml"
         mode: "0644"
       notify: restart monitoring stack
@@ -39,6 +46,13 @@
         src: files/monitoring/prometheus/
         dest: "{{ monitoring_base_dir }}/prometheus/"
         mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar archivos nginx web
+      ansible.builtin.copy:
+       src: files/web/
+       dest: "{{ web01_base_dir }}/"
+       mode: "0644"
       notify: restart monitoring stack
 
     - name: Crear carpeta de Alertmanager
@@ -62,14 +76,14 @@
       notify: restart monitoring stack
 
     - name: Asegurar que el stack de monitoring está levantado
-      community.docker.docker_compose:
+      community.docker.docker_compose_v2:
         project_src: "{{ monitoring_base_dir }}"
         state: present
         remove_orphans: true
 
   handlers:
     - name: restart monitoring stack
-      community.docker.docker_compose:
+      community.docker.docker_compose_v2:
         project_src: "{{ monitoring_base_dir }}"
         state: present
         remove_orphans: true

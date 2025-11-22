@@ -43,7 +43,7 @@ services:
       - "--path.rootfs=/rootfs"
       - "--path.procfs=/host/proc"
       - "--path.sysfs=/host/sys"
-      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($|/)"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
     networks:
       - monitoring
 
@@ -67,8 +67,30 @@ services:
     networks:
       - monitoring
 
+  web:
+    image: nginx:alpine
+    container_name: portfolio-web
+    ports:
+      - "80:80"     # PUerto por el que escuchara Nginx
+    volumes:
+      - /opt/web01:/usr/share/nginx/html:ro
+    restart: unless-stopped
+    networks:
+      - web-01
+
+  blackbox:
+    image: prom/blackbox-exporter:latest
+    container_name: blackbox-exporter
+    ports:
+      - "9115:9115"
+    restart: unless-stopped
+    networks:
+      - monitoring
+      - web-01
+
 networks:
   monitoring:
+  web-01:
 
 volumes:
   prometheus-data:
