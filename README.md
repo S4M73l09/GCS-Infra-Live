@@ -254,6 +254,89 @@ Herramientas usadas para validar la configuracion antes de desplegar:
 * YAML linting
    * `yamllint` sobre `prometheus.yml` y `alerts.yml` para limpiar espacios y comentarios
 
+## Flujo de promoción de Terraform (`feat/dev` → `main`)
+
+En este repo usamos las ramas así:
+
+- `main` → rama **LIVE / producción**.  
+- `feat/dev` → rama de **desarrollo y pruebas** (Terraform, workflows, README, etc.).  
+- Ramas tipo `feat/tf-...` → ramas **temporales de promoción**, solo para llevar cambios de Terraform desde `feat/dev` a `main`.
+
+La idea es:
+
+> En `feat/dev` puedo tocar de todo.  
+> A `main` solo llegan los cambios de Terraform que yo decido, a través de una rama de promoción.
+
+---
+
+### Pasos para subir cambios de Terraform a `main`
+
+Supongamos que los `.tf` están en `environments/dev`.
+
+1. **Trabajar normal en `feat/dev`**
+
+   - Editar Terraform en `environments/dev`.
+   - Probar, validar, hacer `terraform plan`, etc.
+   - Hacer commits y `git push` a `feat/dev` hasta que la infra esté lista.
+
+2. **Cuando los cambios de Terraform estén listos para producción**
+
+   Crear una rama de promoción limpia desde `main`:
+
+   ```bash
+   # 1) Ir a main y actualizar
+   git checkout main
+   git pull origin main
+
+   # 2) Crear rama de promoción (nombre de ejemplo)
+   git checkout -b feat/tf-update-<descripcion>
+
+Traer solo la carpeta de Terraform desde feat/dev:
+```
+git checkout feat/dev -- environments/dev
+```
+
+Comprobar qué ha cambiado:
+```bash
+git status
+```
+→ Aquí solo deberían aparecer archivos bajo `environments/dev`.
+
+Hacer commit y subir la rama:
+```bash
+git add environments/dev
+git commit -m "Actualizar Terraform desde feat/dev"
+git push origin feat/tf-update-<descripcion>
+```
+
+3. **Crear el pull_request a `main`**
+
+   - Abrir un PR: `feat/tf-update-description -> main`
+   - Revisar el diff: solo deben aparecer archivos dentro de `envinronments/dev`
+   - Dejar que se ejecuten los workflows
+   - Si todo esta OK -> hacer merge a `main`
+
+4. **Limpiar rama de promocion**
+
+Una vez mergeado el PR:
+
+```bash
+# Borrar la rama local
+git branch -d feat/tf-update-<descripcion>
+
+# Borrar la rama en remoto (GitHub)
+git push origin --delete feat/tf-update-<descripcion>
+```
+
+## ¿Por qué usamos directamente `feat/dev -> main`
+
+El PR `feat/dev -> main` arrastraría todos los cambios de esa rama(README, workflows, pruebas, etc.), no solo Terraform.
+
+Con este flujo: 
+
+* `feat/dev` sigue siendo un **taller** donde se pueda tocar de todo.
+* `main` solo recibe, mediante ramas de promocion (`feat/tf-...`), los cambios de Terraform que ya estan listos para la produccion.
+
 ## Artefacts y visibilidad
 * Inventario y cfg quedan guardados como artifact:  
 `ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg`

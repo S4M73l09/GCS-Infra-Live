@@ -283,6 +283,90 @@ Tools used to validate configuration before deploying:
 * YAML linting
    * `yamllint` about `prometheus.yml`and `alerts.yml` to clean spaces and comments
 
+## Terraform Promotion Flow (`feat/dev` → `main`)
+
+In this repo we use branches like this:
+
+- `main` → **LIVE / production** branch.  
+- `feat/dev` → **development and testing** branch (Terraform, workflows, README, etc.).  
+- Branches like `feat/tf-...` → **temporary promotion branches**, used only to bring Terraform changes from `feat/dev` into `main`.
+
+The idea is:
+
+> In `feat/dev` I can change anything.  
+> Only the Terraform changes I explicitly choose are promoted to `main`, through a promotion branch.
+
+---
+
+### Steps to promote Terraform changes to `main`
+
+We assume the `.tf` files live in `environments/dev`.
+
+1. **Work normally in `feat/dev`**
+
+   - Edit Terraform under `environments/dev`.
+   - Test, validate, run `terraform plan`, etc.
+   - Commit and `git push` to `feat/dev` until the infra is ready.
+
+2. **When the Terraform changes are ready for production**
+
+   Create a clean promotion branch from `main`:
+
+   ```bash
+   # 1) Go to main and update
+   git checkout main
+   git pull origin main
+
+   # 2) Create a promotion branch (example name)
+   git checkout -b feat/tf-update-<description>
+
+Pull in only the Terraform folder from feat/dev:
+```
+git checkout feat/dev -- environments/dev
+```
+
+Check what changed:
+```bash
+git status
+```
+→ You should only see files under `environments/dev` as modified.
+
+Commit and push the branch:
+```bash
+git add environments/dev
+git commit -m "Update Terraform from feat/dev`
+git push origin feat/tf-update-<description>
+```
+
+3. **Create the Pull Request to main**
+
+   - Open a PR: `feat/tf-update-<description> → main`.
+   - Review the diff: only files under `environments/dev` should appear.
+   - Let the workflows run (lint, plan, etc.).
+   - If everything is OK → Merge into `main`.
+
+4. **Clean up the promotion branch (optional but recommended)**
+
+Once the PR is merged:
+
+```bash
+# Delete the branch locally
+git branch -d feat/tf-update-<description>
+
+# Delete the branch on remote (GitHub)
+git push origin --delete feat/tf-update-<description>
+```
+
+## Why not use `feat/dev → main` directly?
+
+A PR from `feat/dev → main` would include all changes on that branch (README, workflows, experiments, etc.), not just Terraform.
+
+With this flow:
+
+* `feat/dev` remains a workshop branch where you can change anything.
+* `main only receives`, via promotion branches (feat/tf-...),
+the Terraform changes that are already ready for production.
+
 ## Artifacts and visibility
 
 * Inventory and cfg are stored as an artifact:
