@@ -1,6 +1,6 @@
 project_id = "gcloud-live-dev" # ←  proyecto LIVE
 region     = "europe-west1"
-zone       = "europe-west1-a"
+zone       = "europe-west1-b"
 
 # Nuestro usuario (SSH normal y sudo)
 oslogin_members = ["user:saminfradevops@gmail.com"]
