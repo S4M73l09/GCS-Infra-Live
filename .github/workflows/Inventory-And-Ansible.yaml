@@ -14,13 +14,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  generate_inventory:
+  # ──────────────────────────────────────────────────────────────
+  # 0) Resolver entorno a partir del workflow que nos ha llamado
+  # ──────────────────────────────────────────────────────────────
+  resolve-env:
+    name: Resolve environment from trigger
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        env: [dev] # añade 'prod' si queremos cubrir producción también
+    outputs:
+      env: ${{ steps.set-env.outputs.env }}
+    permissions:
+      actions: read # Requerido para descargar artefactos de otros workflows
+    steps:
+      - name: Download env artifact from triggering workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: applied-env
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Read env from file
+        id: set-env
+        run: echo "env=$(cat env.txt)" >> $GITHUB_OUTPUT
 
+  # ──────────────────────────────────────────────────────────────
+  # 1) Generar inventario para el entorno detectado, y verificar si las instances están arrancadas.
+  # ──────────────────────────────────────────────────────────────
+  generate_inventory:
+    name: Generate inventory
+    needs: resolve-env
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -34,20 +56,74 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
 
+      - name: Ensure GCP VMs are running
+        run: |
+          set -euo pipefail
+          echo "Checking for stopped GCP instances in environment: ${{ needs.resolve-env.outputs.env }}"
+          
+          # List all instances for the environment, filter for TERMINATED ones
+          STOPPED_INSTANCES=$(gcloud compute instances list \
+            --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=TERMINATED" \
+            --format="value(name,zone)")
+
+          if [ -z "$STOPPED_INSTANCES" ]; then
+            echo "No stopped instances found for environment: ${{ needs.resolve-env.outputs.env }}"
+          else
+            echo "Found stopped instances. Attempting to start them:"
+            echo "$STOPPED_INSTANCES" | while read -r INSTANCE_NAME INSTANCE_ZONE; do
+              echo "Starting instance: $INSTANCE_NAME in zone: $INSTANCE_ZONE"
+              gcloud compute instances start "$INSTANCE_NAME" --zone="$INSTANCE_ZONE" --quiet
+            done
+            echo "All identified stopped instances have been commanded to start."
+            
+            # Optional: Add a wait loop to ensure instances are running before proceeding
+            echo "Waiting for instances to reach RUNNING state..."
+            MAX_WAIT_TIME=300 # 5 minutes
+            WAIT_INTERVAL=10  # 10 seconds
+            ELAPSED_TIME=0
+            
+            while [ "$ELAPSED_TIME" -lt "$MAX_WAIT_TIME" ]; do
+              RUNNING_INSTANCES=$(gcloud compute instances list \
+                --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=RUNNING" \
+                --format="value(name)")
+              
+              ALL_INSTANCES=$(gcloud compute instances list \
+                --filter="labels.env=${{ needs.resolve-env.outputs.env }}" \
+                --format="value(name)")
+              
+              # Count total instances and running instances
+              TOTAL_COUNT=$(echo "$ALL_INSTANCES" | wc -l)
+              RUNNING_COUNT=$(echo "$RUNNING_INSTANCES" | wc -l)
+              
+              if [ "$TOTAL_COUNT" -eq "$RUNNING_COUNT" ]; then
+                echo "All instances are now running."
+                break
+              else
+                echo "Still waiting for instances to start. Running: $RUNNING_COUNT/$TOTAL_COUNT. Elapsed time: ${ELAPSED_TIME}s"
+                sleep "$WAIT_INTERVAL"
+                ELAPSED_TIME=$((ELAPSED_TIME + WAIT_INTERVAL))
+              fi
+            done
+            
+            if [ "$ELAPSED_TIME" -ge "$MAX_WAIT_TIME" ]; then
+              echo "Warning: Some instances did not reach RUNNING state within the timeout."
+            fi
+          fi
+
       - name: Prepare gcloud SSH (IAP)
         run: |
           gcloud config set project ${{ vars.GCP_PROJECT_ID }}
           gcloud compute config-ssh --tunnel-through-iap --quiet
 
-      - name: Generate Ansible inventory (env=${{ matrix.env }})
+      - name: Generate Ansible inventory (env=${{ needs.resolve-env.outputs.env }})
         run: |
           set -euo pipefail
           mkdir -p ansible
 
           gcloud compute instances list \
-            --filter="labels.env=${{ matrix.env }} AND status=RUNNING" \
+            --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=RUNNING" \
             --format="value(name,zone,project)" \
-          | awk '{print $1","$2","$3}' > ansible/hosts.list
+          | awk '{print $1 ","$2 ","$3}' > ansible/hosts.list
 
           { echo "[gce]"; cat ansible/hosts.list; } > ansible/hosts.ini
 
@@ -67,30 +143,19 @@ jobs:
       - name: Upload inventory artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ansible-inventory-${{ matrix.env }}
+          name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
           path: |
             ansible/hosts.ini
             ansible/ansible.cfg
           retention-days: 14
 
-  publish_inventory:
-    needs: generate_inventory
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        env: [dev]
-
-    steps:
-      - name: Echo artifact name
-        run: 'echo "Artifact listo: ansible-inventory-${{ matrix.env }}"'
-
+  # ──────────────────────────────────────────────────────────────
+  # 2) Ejecutar Ansible en el entorno detectado
+  # ──────────────────────────────────────────────────────────────
   run_ansible:
-    needs: generate_inventory
+    name: Run Ansible
+    needs: [resolve-env, generate_inventory]
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        env: [dev]
-
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -112,7 +177,7 @@ jobs:
       - name: Download inventory artifact to Ansible/
         uses: actions/download-artifact@v4
         with:
-          name: ansible-inventory-${{ matrix.env }}
+          name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
           path: ansible
 
       - name: Install Ansible
@@ -126,16 +191,11 @@ jobs:
       - name: Run Ansible
         env:
           ANSIBLE_CONFIG: ansible/ansible.cfg
-          ALERT_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
-          ALERT_SMTP_FROM:      ${{ secrets.ALERT_SMTP_FROM }}
-          ALERT_SMTP_USER:      ${{ secrets.ALERT_SMTP_USER }}
-          ALERT_SMTP_PASS:      ${{ secrets.ALERT_SMTP_PASS }}
-          ALERT_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
-        run: |
-          ansible-playbook ansible/site.yml \
-            -e alertmanager_smtp_smarthost="$ALERT_SMTP_SMARTHOST" \
-            -e alertmanager_smtp_from="$ALERT_SMTP_FROM" \
-            -e alertmanager_smtp_user="$ALERT_SMTP_USER" \
-            -e alertmanager_smtp_pass="$ALERT_SMTP_PASS" \
-            -e alertmanager_smtp_to="$ALERT_SMTP_TO"
-
+          ALERTMANAGER_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
+          ALERTMANAGER_SMTP_FROM:      ${{ secrets.ALERT_SMTP_FROM }}
+          ALERTMANAGER_SMTP_USER:      ${{ secrets.ALERT_SMTP_USER }}
+          ALERTMANAGER_SMTP_PASS:      ${{ secrets.ALERT_SMTP_PASS }}
+          ALERTMANAGER_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
+          GRAFANA_ADMIN_USER:         ${{ secrets.GRAFANA_ADMIN_USER }}
+          GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+        run: ansible-playbook ansible/site.yml

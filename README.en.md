@@ -70,8 +70,6 @@ ansible/
     style.css
   files/
     monitoring/
-      docker/
-        docker-compose.yml            # (already in place)
       prometheus/
         prometheus.yml                # (already in place)
         rules/
@@ -85,6 +83,7 @@ ansible/
       template/
         monitoring/
           alertmanager.yml.j2         # (Template that will generate Alertmanager.yml)
+          docker-compose.yml.j2       # (Template for docker-compose.yml) 
 ```
 
 ## How the full pipeline works
@@ -172,32 +171,92 @@ When the web or stack files change, the `restart monitoring stack` handler is no
 
 Services defined in `docker-compose.yml`
 
-Path: `ansible/files/monitoring/docker/docker-compose.yml`.
+Path: `ansible/templates/monitoring/docker-compose.yml.j2`.
 
-* `prometheus`-> Collect metrics
+Ansible copies this template to the VM at `{{ monitoring_base_dir }}/docker/docker-compose.yml` and brings up the stack using `community.docker.docker_compose_v2` (`project_src = {{ monitoring_base_dir }}/docker`).
 
-* `alertmanager` -> manage alerts
 
-* `node-exporter` -> system metrics (CPU, RAM, Disk, Network)
+* `prometheus`-> Collect metrics  
+* `alertmanager` -> manage alerts  
+* `node-exporter` -> system metrics (CPU, RAM, Disk, Network)  
+* `grafana` -> visulization of metrics  
+* `web (Nginx)` -> the static website works from `opt/web01`  
+* `blackbox` -> check the HTTP availability of the website  
 
-* `grafana` -> visulization of metrics
+It also adds good practices:
 
-* `web (Nginx)` -> the static website works from `opt/web01`
+**Prometheus**
 
-* `blackbox` -> check the HTTP availability of the website
+- Image `prom/prometheus`.
+  - Expose `9090`.
+  - Mount configuration and rules as read-only volumes.
+  - Persist data in `prometheus-data`.
+  - Healthcheck HTTP (`/-/healthy`).
+  - Resource limits: ~0.5 CPU and 1 GB of RAM.
 
-## Docker Networks
+**Alertmanager**
 
-* `monitoring` -> Prometheus, Grafana, Alertmanager, node-exporter, blackbox.  
+- Image `prom/alertmanager`.
+  - Expose `9093`.
+  - Configure as read-only volume from `./alertmanager/alertmanager`.
+  - Healthcheck HTTP (`/-/healthy`).
 
-* `web-01` -> Nginx (`web`) + blackbox (to be able to probe `http://web:80`).
+**Node exporter**
 
-The `web` service mounts:
+- Image `prom/node-exporter`.
+  - Expose `9100`.
+  - Mount `/proc`, `/sys` and `/` as read-only for read-only metrics collection.
+  - Command to use host paths (`--path.rootfs`, etc.).
 
-```yaml
-volumes:
-  - /opt/web01:/usr/share/nginx/html:ro
-  ```
+**grafana**
+
+- Image `grafana/grafana-oss` (to be fixed to stable version).
+  - Expose `3000`.
+  - Healthcheck HTTP (`/api/`).
+  - Admin user/password are injected from GitHub Secrets through Ansible:
+    - `GF_SECURITY_ADMIN_USER="{{ lookup('env', 'GRAFANA_ADMIN_USER') | default('admin') }}"`
+    - `GF_SECURITY_ADMIN_PASSWORD="{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('admin') }}"`
+  - Disable new user registration (`GF_USERS_ALLOW_SIGN_UP=false`).
+  - Persist data in `grafana-data`.
+  - Provisioning is mounted from `./grafana/provisioning`.
+
+**Web (Nginx)**
+
+- Image `nginx:alpine`.
+  - Expose `gg`.
+  - Serve the static portfolio from `/opt/web01` on the VM (mounted **ro**).
+
+**Blackbox**
+
+- Image `prom/blackbox-exporter`.
+  - Expose `9115`.
+  - Healthcheck HTTP (`/-/healthy`).
+  - Connects to both monitoring and web networks to probe the website.
+
+### Networks and volumes
+
+- Networks:
+  - `monitoring`: Prometheus, Alertmanager, Node Exporter, Grafana, Blackbox.
+  - `web-01`: Nginx (web) and Blackbox.
+
+- Volumes:
+  - `prometheus-data`: data for Prometheus.
+  - `grafana-data`: data for Grafana.
+
+### Good practices applied to the docker-compose.yml.j2 template
+
+- **Separation of responsibilities**: each service in its own container (Prometheus, Alertmanager, Node Exporter, Grafana, Nginx, Blackbox).    
+- **Security**:  
+  - Credentials for Grafana are managed via **GitHub Secrets + Ansible + Jinja2 template**, never in the repo.  
+  - Volume configuration is mounted as **read-only**.  
+- **Resource control**:  
+  - CPU and memory limits for Prometheus and Grafana to avoid saturating the VM.  
+- **Logging**:  
+  - Driver `json-file` with rotation (`max-size: 10m`, `max-file: 3`) to avoid filling the disk.  
+- **Observability of the stack**:  
+  - Healthchecks HTTP in Prometheus, Alertmanager, Grafana and Blackbox to detect quickly unhealthy states.
+- **Lookup('env')**:  
+  - Variables are put in the workflow using `Lookup('env')` to inject them without showing them in the selected templates, improving security.  
 
 
 ## 📊 Prometheus: prometheus.yml + rules
@@ -234,6 +293,14 @@ It includes two rule groups:
 
 Both jobs use `relabel_configs` to send requests to the `blackbox-exporter` in `blackbox:9115`.
 
+## 📈 Grafana: datasource provisioning
+
+Path: `ansible/files/monitoring/grafana/provisioning/datasources/datasource.yml`.
+
+Datasource for Prometheus created automatically when Grafana starts.
+
+Besides, Grafana uses `secrets and variables` to store the Prometheus user and password for greater security.
+
 ## 📬 Alertmanager: template with SMTP and GitHub Secrets
 
 Path: `ansible/templates/monitoring/alertmanager.yml.j2`.
@@ -256,7 +323,12 @@ In Settings → `Secrets and variables` → `Actions`:
 
 * `ALERT_SMTP_TO` → destination email (if omitted, ALERT_SMTP_FROM is used)
 
-The Ansible step in the workflow passes these secrets to the playbook as `-e` variables, which the template then uses to generate `alertmanager.yml` on the VM.
+* `GRAFANA_ADMIN_USER` → Grafana username.
+
+* `GRAFANA_ADMIN_PASSWORD` → Grafana admin password.
+
+The Ansible step in the workflow passes these secrets to the playbook as `-e` variables, which the template then uses to generate `alertmanager.yml` on the VM and the Grafana user and password in the `docker-compose.yml` file.
+
 
 ## Ecstatic web
 

@@ -34,10 +34,10 @@
         state: directory
         mode: "0755"
 
-    - name: Copiar docker-compose.yml
-      ansible.builtin.copy:
-        src: files/monitoring/docker/docker-compose.yml
-        dest: "{{ monitoring_base_dir }}/docker-compose.yml"
+    - name: Plantilla de docker-compose.yml para monitoring
+      ansible.builtin.template:
+        src: templates/monitoring/docker-compose.yml.j2
+        dest: "{{ monitoring_base_dir }}/docker/docker-compose.yml"
         mode: "0644"
       notify: restart monitoring stack
 
@@ -63,7 +63,7 @@
 
     - name: Plantilla de configuracion de Alertmanager
       ansible.builtin.template:
-        src: monitoring/alertmanager.yml.j2
+        src: templates/monitoring/alertmanager.yml.j2
         dest: "{{ monitoring_base_dir }}/alertmanager/alertmanager.yml"
         mode: "0644"
       notify: restart monitoring stack
@@ -77,13 +77,13 @@
 
     - name: Asegurar que el stack de monitoring está levantado
       community.docker.docker_compose_v2:
-        project_src: "{{ monitoring_base_dir }}"
+        project_src: "{{ monitoring_base_dir }}/docker"
         state: present
         remove_orphans: true
 
   handlers:
     - name: restart monitoring stack
       community.docker.docker_compose_v2:
-        project_src: "{{ monitoring_base_dir }}"
+        project_src: "{{ monitoring_base_dir }}/docker"
         state: present
         remove_orphans: true

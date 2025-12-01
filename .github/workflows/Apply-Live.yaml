@@ -9,7 +9,7 @@ on:
       - "**/*.tf"
       - "**/*.tfvars"
       - "**/.tflint.hcl"
-      - ".github/workflows/Live-Apply.yaml"
+      - ".github/workflows/Apply-Live.yaml"
   workflow_dispatch:
     inputs:
       env_dir:
@@ -50,7 +50,7 @@ jobs:
           filters: |
             tf:
               - 'environments/**'
-              - '.github/workflows/Live-Apply.yaml'
+              - '.github/workflows/Apply-Live.yaml'
 
       - name: No relevant changes — skip
         if: steps.filter.outputs.tf != 'true'
@@ -200,4 +200,23 @@ jobs:
       - name: Terraform Apply (approved plan)
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform apply -input=false -lock-timeout=5m tfplan.bin
+
+  # ──────────────────────────────────────────────────────────────
+  # 4) Publicar artefacto con el nombre del entorno
+  # ──────────────────────────────────────────────────────────────
+  publish-env-artifact:
+    name: Publish env artifact
+    runs-on: ubuntu-latest
+    needs: [changes, apply]
+    if: needs.changes.outputs.tf == 'true'
+    steps:
+      - name: Save environment name
+        run: echo "${{ needs.changes.outputs.env }}" > env.txt
+
+      - name: Upload env artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: applied-env
+          path: env.txt
+          retention-days: 1
 

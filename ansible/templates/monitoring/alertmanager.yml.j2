@@ -1,10 +1,10 @@
 global:
   resolve_timeout: 5m
 
-  smtp_smarthost: "{{ alertmanager_smtp_smarthost }}"
-  smtp_from: "{{ alertmanager_smtp_from }}"
-  smtp_auth_username: "{{ alertmanager_smtp_user }}"
-  smtp_auth_password: "{{ alertmanager_smtp_pass }}"
+  smtp_smarthost: "{{ lookup('env', 'ALERTMANAGER_SMTP_SMARTHOST') }}"
+  smtp_from: "{{ lookup('env', 'ALERTMANAGER_SMTP_FROM') }}"
+  smtp_auth_username: "{{ lookup('env', 'ALERTMANAGER_SMTP_USER') }}"
+  smtp_auth_password: "{{ lookup('env', 'ALERTMANAGER_SMTP_PASS') }}"
   smtp_require_tls: true
 
 route:
@@ -17,5 +17,5 @@ route:
 receivers:
   - name: "default"
     email_configs:
-      - to: "{{ alertmanager_smtp_to | default(alertmanager_smtp_from) }}"
+      - to: "{{ lookup('env', 'ALERTMANAGER_SMTP_TO')  | default(lookup('env', 'ALERTMANAGER_SMTP_FROM')) }}"
         send_resolved: true
