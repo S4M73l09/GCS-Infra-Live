@@ -15,7 +15,7 @@ on:
       env_dir:
         description: 'Environment to apply (folder under environments/)'
         required: false
-        default: 'prod'
+        default: 'dev'
 
 permissions:
   contents: read
@@ -65,7 +65,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           # Default seguro
-          ENV="environments/prod"
+          ENV="environments/dev"
 
           # Si se lanzó manual con input, úsalo
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
