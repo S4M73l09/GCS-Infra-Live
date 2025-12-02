@@ -91,6 +91,9 @@ resource "google_compute_instance" "ubuntu" {
   zone         = var.zone
   machine_type = local.vm_machine_type
 
+  # Permitir que Terraform pare la VM para aplicar cambios gordos.
+  allow_stopping_for_update = true
+
   labels = {
     role    = "demo"
     os      = "ubuntu2204"
