@@ -45,7 +45,7 @@ variable "block_project_ssh_keys" {
 # VM
 variable "vm_name" {
   type    = string
-  default = "dev-oslogin-ubuntu"
+  default = "Ubuntu-dev"
 }
 
 variable "series" {
