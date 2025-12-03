@@ -55,6 +55,8 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          export_environment_variables: true
 
       - name: Ensure GCP VMs are running
         run: |
@@ -112,7 +114,7 @@ jobs:
 
       - name: Prepare gcloud SSH (IAP)
         run: |
-          gcloud config set project ${{ vars.GCP_PROJECT_ID }}
+          gcloud config set project ${{ vars.GCP_INFRA_PROJECT_ID }}
           gcloud compute config-ssh --tunnel-through-iap --quiet
 
       - name: Generate Ansible inventory (env=${{ needs.resolve-env.outputs.env }})
@@ -171,7 +173,7 @@ jobs:
 
       - name: Prepare gcloud SSH (IAP)
         run: |
-          gcloud config set project ${{ vars.GCP_PROJECT_ID }}
+          gcloud config set project ${{ vars.GCP_INFRA_PROJECT_ID }}
           gcloud compute config-ssh --tunnel-through-iap --quiet
 
       - name: Download inventory artifact to Ansible/
