@@ -168,6 +168,11 @@ jobs:
           project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
           export_environment_variables: true
 
+      - name: (DEBUG) List all instances in project
+        run: |
+          echo "Listing all instances in project ${{ vars.GCP_INFRA_PROJECT_ID }}..."
+          gcloud compute instances list --project=${{ vars.GCP_INFRA_PROJECT_ID }}
+
       - name: Prepare gcloud SSH (IAP)
         id: prepare_ssh
         run: |
