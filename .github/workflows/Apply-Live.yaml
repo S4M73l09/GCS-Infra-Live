@@ -52,15 +52,8 @@ jobs:
               - 'environments/**'
               - '.github/workflows/Apply-Live.yaml'
 
-      - name: No relevant changes — skip
-        if: steps.filter.outputs.tf != 'true'
-        run: |
-          echo "Sin cambios de Terraform ni del workflow de apply. Saliendo."
-          exit 0
-
       - name: Pick environment dir (safe)
         id: envdir
-        if: steps.filter.outputs.tf == 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
