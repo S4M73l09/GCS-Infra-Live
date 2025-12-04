@@ -186,15 +186,10 @@ jobs:
         continue-on-error: true
 
       - name: Check generated SSH config
+        # Solo ejecuta si el paso anterior fue 'success'
+        if: ${{ steps.prepare_ssh.outcome == 'success' }}
         run: |
           echo "=== check generated SSH config ==="
-
-          # 1) Si el anterior paso falló, se avisa pero NO se rompe el archivo
-          if [ "${{ steps.prepare_ssh.outcome }}"" != "success" ]; then
-            echo ""WARNING: 'Prepare gcloud SSH (IAP)' step did not succeed (outcome=${{ steps.prepare_ssh.outcome }})."
-            echo "Skipping SSH config inspection."
-            exit 0
-          fi
 
           # 2) Si no hay fichero, se avisa pero NO es un error fatal
           if [ ! -f ~/.ssh/config ]; then
