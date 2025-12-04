@@ -112,15 +112,6 @@ jobs:
             fi
           fi
 
-      - name: Prepare gcloud SSH (IAP)
-        run: |
-          gcloud config set project ${{ vars.GCP_INFRA_PROJECT_ID }}
-          gcloud compute config-ssh --quiet
-
-      - name: Check generated SSH config
-        run: |
-          cat ~/.ssh/config
-
       - name: Generate Ansible inventory (env=${{ needs.resolve-env.outputs.env }})
         run: |
           set -euo pipefail
@@ -129,7 +120,7 @@ jobs:
           gcloud compute instances list \
             --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=RUNNING" \
             --format="value(name,zone,project)" \
-          | awk '{print $1 ","$2 ","$3}' > ansible/hosts.list
+          | awk '{print $1"."$2"."$3}' > ansible/hosts.list
 
           { echo "[gce]"; cat ansible/hosts.list; } > ansible/hosts.ini
 
