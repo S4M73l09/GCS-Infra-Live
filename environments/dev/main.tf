@@ -98,6 +98,7 @@ resource "google_compute_instance" "ubuntu" {
     role    = "demo"
     os      = "ubuntu2204"
     managed = "terraform"
+    env     = "dev"
   }
 
   # Etiqueta para la regla IAP SSH (si no usas IP pública)
