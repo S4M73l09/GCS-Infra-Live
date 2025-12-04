@@ -165,6 +165,8 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          export_environment_variables: true
 
       - name: Prepare gcloud SSH (IAP)
         run: |
