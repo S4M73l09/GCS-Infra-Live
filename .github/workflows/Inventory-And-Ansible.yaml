@@ -136,6 +136,13 @@ jobs:
             cat ansible/hosts.ini
             exit 1
           fi
+      - name: Debug inventory after generation
+        run: |
+          echo "=== ansible/hosts.list ==="
+          cat ansible/hosts.list || echo "NO hosts in hosts.list"
+
+          echo "=== ansible/hosts.ini ==="
+          cat ansible/hosts.ini 
 
       - name: Upload inventory artifact
         uses: actions/upload-artifact@v4
