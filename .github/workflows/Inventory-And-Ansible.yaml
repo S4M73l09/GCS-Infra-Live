@@ -169,12 +169,29 @@ jobs:
           export_environment_variables: true
 
       - name: Prepare gcloud SSH (IAP)
+        id: prepare_ssh
         run: |
+          set -e
+          echo "Ensuring .ssh directory exists..."
+          mkdir -p ~/.ssh
+          echo "Setting gcloud project..."
           gcloud config set project ${{ vars.GCP_INFRA_PROJECT_ID }}
-          gcloud compute config-ssh --quiet
+          echo "Running gcloud compute config-ssh..."
+          gcloud compute config-ssh
+        continue-on-error: true
 
       - name: Check generated SSH config
         run: |
+          if [ ${{ steps.prepare_ssh.outcome }} != 'success' ]; then
+            echo "The 'Prepare gcloud SSH (IAP)' step failed."
+            exit 1
+          fi
+          if [ ! -f ~/.ssh/config ]; then
+            echo "ERROR: ~/.ssh/config file was not created by 'gcloud compute config-ssh'."
+            echo "This can happen if there are no VM instances in the project '${{ vars.GCP_INFRA_PROJECT_ID }}' or if gcloud failed for another reason."
+            exit 1
+          fi
+          echo "SSH config file found. Content:"
           cat ~/.ssh/config
 
       - name: Download inventory artifact to Ansible/
