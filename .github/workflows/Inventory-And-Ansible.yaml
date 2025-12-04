@@ -126,7 +126,7 @@ jobs:
 
           printf "%s\n" \
             "[defaults]" \
-            "inventory = ansible/hosts.ini" \
+            "inventory = hosts.ini" \
             "host_key_checking = False" \
             "[ssh_connection]" \
             "ssh_args = -F ~/.ssh/config" > ansible/ansible.cfg
