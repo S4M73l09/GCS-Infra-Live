@@ -122,6 +122,9 @@ resource "google_compute_instance" "ubuntu" {
   }
 
   # No metas ssh-keys en metadatos; OS Login ya está a nivel proyecto
+  metadata = {
+    enable-oslogin = "FALSE"
+  }
 
   service_account {
     email  = "default"
