@@ -1,3 +1,4 @@
 ---
 collections:
   - name: community.docker
+  - name: google.cloud

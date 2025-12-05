@@ -58,6 +58,17 @@ jobs:
           project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
           export_environment_variables: true
 
+      - name: Determine OS Login username
+        run: |
+          set -euo pipefail
+          USERNAME=$(gcloud compute os-login describe-profile --format='value(posixAccounts.username)' | head -n1)
+          if [ -z "$USERNAME" ]; then
+            echo "ERROR: Unable to retrieve OS Login username for current principal"
+            exit 1
+          fi
+          echo "Detected OS Login user: $USERNAME"
+          echo "OS_LOGIN_USER=$USERNAME" >> "$GITHUB_ENV"
+
       - name: Ensure GCP VMs are running
         run: |
           set -euo pipefail
@@ -117,6 +128,7 @@ jobs:
           GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
         run: |
           set -euo pipefail
+          : "${OS_LOGIN_USER:?OS_LOGIN_USER is required}"
           mkdir -p ansible
           
           ENV_VALUE="${{ needs.resolve-env.outputs.env }}"
@@ -144,9 +156,10 @@ jobs:
                 continue
               fi
 
-              SSH_ARGS="-o ProxyCommand=\"gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o CheckHostIP=no"
-              printf "%s ansible_host=127.0.0.1 ansible_ssh_common_args='%s'\n" \
+              SSH_ARGS="-i ~/.ssh/google_compute_engine -o ProxyCommand=\"gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o CheckHostIP=no"
+              printf "%s ansible_user=%s ansible_host=127.0.0.1 ansible_ssh_common_args='%s'\n" \
                 "$INSTANCE_NAME" \
+                "$OS_LOGIN_USER" \
                 "$SSH_ARGS"
             done < ansible/hosts_with_zones.list
           } > ansible/hosts.ini
