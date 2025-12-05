@@ -128,21 +128,37 @@ jobs:
             --format="value(name)" \
             > ansible/hosts.list
 
+          gcloud compute instances list \
+            --project="${GCP_PROJECT}" \
+            --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
+            --format="value(name,zone)" \
+            > ansible/hosts_with_zones.list
+
           echo "=== ansible/hosts.list ==="
           cat ansible/hosts.list || echo "NO INSTANCES FOUND"
 
-          { echo "[gce]"; cat ansible/hosts.list; } > ansible/hosts.ini
+          {
+            echo "[gce]"
+            while read -r INSTANCE_NAME INSTANCE_ZONE; do
+              if [ -z "$INSTANCE_NAME" ]; then
+                continue
+              fi
+
+              SSH_ARGS="-o ProxyCommand=\"gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o CheckHostIP=no"
+              printf "%s ansible_host=127.0.0.1 ansible_ssh_common_args='%s'\n" \
+                "$INSTANCE_NAME" \
+                "$SSH_ARGS"
+            done < ansible/hosts_with_zones.list
+          } > ansible/hosts.ini
 
           printf "%s\n" \
             "[defaults]" \
             "host_key_checking = False" \
-            "[ssh_connection]" \
-            "ssh_args = -o HostName=127.0.0.1 -o ProxyCommand=\"gcloud compute start-iap-tunnel %n 22 --project=${GCP_PROJECT} --zone=europe-west1-b --listen-on-stdin\" -o StrictHostKeyChecking=no" \
             > ansible/ansible.cfg
 
-          if grep -Eq '([0-9]{1,3}\.){3}[0-9]{1,3}' ansible/hosts.ini; then
-            echo "ERROR: hosts.ini contiene IPs. Usa FQDN GCE."
-            cat ansible/hosts.ini
+          if ! grep -Eq '^[[:graph:]]+[[:space:]]+ansible_host=' ansible/hosts.ini; then
+            echo "ERROR: No hosts rendered into hosts.ini"
+            cat ansible/hosts.ini || true
             exit 1
           fi
       - name: Debug inventory after generation
