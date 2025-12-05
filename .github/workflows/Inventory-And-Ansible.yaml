@@ -58,27 +58,6 @@ jobs:
           project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
           export_environment_variables: true
 
-      - name: Determine OS Login username
-        env:
-          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-
-          echo "Using project for OS Login: ${GCP_PROJECT}"
-          # Forzamos el proyecto correcto
-          gcloud config set project "${GCP_PROJECT}"
-
-          USERNAME=$(gcloud compute os-login describe-profile \
-            --project="${GCP_PROJECT}" \
-            --format='value(posixAccounts[0].username)' | head -n1)
-
-          if [ -z "$USERNAME" ]; then
-            echo "ERROR: Unable to retrieve OS Login username for current principal"
-            exit 1
-          fi
-
-          echo "Detected OS Login user: $USERNAME"
-          echo "OS_LOGIN_USER=$USERNAME" >> "$GITHUB_ENV"
 
       - name: Ensure GCP VMs are running
         run: |
@@ -139,7 +118,6 @@ jobs:
           GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
         run: |
           set -euo pipefail
-          : "${OS_LOGIN_USER:?OS_LOGIN_USER is required}"
           mkdir -p ansible
           
           ENV_VALUE="${{ needs.resolve-env.outputs.env }}"
