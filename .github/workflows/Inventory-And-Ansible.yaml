@@ -113,23 +113,32 @@ jobs:
           fi
 
       - name: Generate Ansible inventory (env=${{ needs.resolve-env.outputs.env }})
+        env:
+          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
         run: |
           set -euo pipefail
           mkdir -p ansible
+          
+          ENV_VALUE="${{ needs.resolve-env.outputs.env }}"
+          echo "Using env label value: '${ENV_VALUE}'"
 
           gcloud compute instances list \
-            --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=RUNNING" \
-            --format="value(name,zone,project)" \
-          | awk '{print $1"."$2"."$3}' > ansible/hosts.list
+            --project="${GCP_PROJECT}" \
+            --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
+            --format="value(name)" \
+            > ansible/hosts.list
+
+          echo "=== ansible/hosts.list ==="
+          cat ansible/hosts.list || echo "NO INSTANCES FOUND"
 
           { echo "[gce]"; cat ansible/hosts.list; } > ansible/hosts.ini
 
           printf "%s\n" \
             "[defaults]" \
-            "inventory = hosts.ini" \
             "host_key_checking = False" \
             "[ssh_connection]" \
-            "ssh_args = -F ~/.ssh/config" > ansible/ansible.cfg
+            "ssh_args = -o ProxyCommand=\"gcloud compute start-iap-tunnel %h 22 --project=${GCP_PROJECT} --zone=europe-west1-b --listen-on-stdin\" -o StrictHostKeyChecking=no" \ 
+            > ansible/ansible.cfg
 
           if grep -Eq '([0-9]{1,3}\.){3}[0-9]{1,3}' ansible/hosts.ini; then
             echo "ERROR: hosts.ini contiene IPs. Usa FQDN GCE."
@@ -235,4 +244,4 @@ jobs:
           ALERTMANAGER_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
           GRAFANA_ADMIN_USER:         ${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-        run: ansible-playbook ansible/site.yml
+        run: ansible-playbook -i ansible/hosts.ini ansible/site.yml
