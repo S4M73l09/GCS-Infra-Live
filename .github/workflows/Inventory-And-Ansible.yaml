@@ -146,9 +146,8 @@ jobs:
               fi
 
               SSH_ARGS="-i ~/.ssh/google_compute_engine -o ProxyCommand=\"gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o CheckHostIP=no"
-              printf "%s ansible_user=%s ansible_host=127.0.0.1 ansible_ssh_common_args='%s'\n" \
+              printf "%s ansible_host=127.0.0.1 ansible_ssh_common_args='%s'\n" \
                 "$INSTANCE_NAME" \
-                "$OS_LOGIN_USER" \
                 "$SSH_ARGS"
             done < ansible/hosts_with_zones.list
           } > ansible/hosts.ini
