@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
-      TF_VAR_iap_members: ${{ secrets.TF_VAR_IAP_MEMBERS }}
+      TF_VAR_iap_members: ${{ vars.TF_VAR_IAP_MEMBERS }}
     outputs:
       tf:  ${{ steps.changes.outputs.tf }}
       dir: ${{ steps.envdir.outputs.dir }}
