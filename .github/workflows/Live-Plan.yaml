@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TF_IN_AUTOMATION: "true"
+      TF_VAR_iap_members: ${{ secrets.TF_VAR_IAP_MEMBERS }}
     outputs:
       tf:  ${{ steps.changes.outputs.tf }}
       dir: ${{ steps.envdir.outputs.dir }}
@@ -102,6 +103,7 @@ jobs:
     if: needs.changes.outputs.tf == 'true'
     env:
       TF_IN_AUTOMATION: "true"
+      TF_VAR_iap_members: ${{ secrets.TF_VAR_IAP_MEMBERS }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -211,6 +213,7 @@ jobs:
     if: needs.changes.outputs.tf == 'true'
     env:
       TF_IN_AUTOMATION: "true"
+      TF_VAR_iap_members: ${{ secrets.TF_VAR_IAP_MEMBERS }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -311,7 +314,6 @@ jobs:
             ${{ needs.changes.outputs.dir }}/tfplan.json
           retention-days: 10
           if-no-files-found: error
-
 
 
 
