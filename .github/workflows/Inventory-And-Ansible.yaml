@@ -217,12 +217,13 @@ jobs:
 
             echo "Warming up SSH access for ${INSTANCE_NAME} (${INSTANCE_ZONE})"
             for attempt in $(seq 1 5); do
-              if gcloud compute ssh "${ANSIBLE_SSH_USER}@${INSTANCE_NAME}" \
-                --project="${GCP_PROJECT}" \
-                --zone="${INSTANCE_ZONE}" \
-                --tunnel-through-iap \
-                --ssh-key-file="${ANSIBLE_SSH_KEY_PATH}" \
-                --command='true'; then
+              if ssh \
+                -i "${ANSIBLE_SSH_KEY_PATH}" \
+                -o StrictHostKeyChecking=no \
+                -o UserKnownHostsFile=/dev/null \
+                -o ProxyCommand="gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet" \
+                "${ANSIBLE_SSH_USER}@127.0.0.1" \
+                "true"; then
                 echo "SSH warm-up succeeded for ${INSTANCE_NAME}"
                 break
               fi
