@@ -197,6 +197,46 @@ jobs:
               --metadata-from-file ssh-keys="${TMP_DIR}/ssh-keys"
           done < ansible/hosts_with_zones.list
 
+      - name: Warm up SSH access via IAP
+        env:
+          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+          : "${ANSIBLE_SSH_USER:?ANSIBLE_SSH_USER is required}"
+
+          if [ ! -s ansible/hosts_with_zones.list ]; then
+            echo "No hosts to warm up."
+            exit 0
+          fi
+
+          while read -r INSTANCE_NAME INSTANCE_ZONE; do
+            if [ -z "$INSTANCE_NAME" ]; then
+              continue
+            fi
+
+            echo "Warming up SSH access for ${INSTANCE_NAME} (${INSTANCE_ZONE})"
+            for attempt in $(seq 1 5); do
+              if gcloud compute ssh "${ANSIBLE_SSH_USER}@${INSTANCE_NAME}" \
+                --project="${GCP_PROJECT}" \
+                --zone="${INSTANCE_ZONE}" \
+                --tunnel-through-iap \
+                --ssh-key-file="${ANSIBLE_SSH_KEY_PATH}" \
+                --command='true'; then
+                echo "SSH warm-up succeeded for ${INSTANCE_NAME}"
+                break
+              fi
+
+              if [ "$attempt" -eq 5 ]; then
+                echo "ERROR: SSH warm-up failed for ${INSTANCE_NAME} after 5 attempts"
+                exit 1
+              fi
+
+              echo "Retrying SSH warm-up for ${INSTANCE_NAME} (attempt $((attempt + 1)))"
+              sleep 5
+            done
+          done < ansible/hosts_with_zones.list
+
       - name: Generate Ansible inventory (env=${{ needs.resolve-env.outputs.env }})
         env:
           GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
