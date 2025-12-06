@@ -103,6 +103,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.tf == 'true' || needs.changes.outputs.force == 'true'
+    env:
+      TF_VAR_iap_members: ${{ toJSON(fromJSON(vars.TF_VAR_IAP_MEMBERS)) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -180,6 +182,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes, approve_gate]
     if: needs.changes.outputs.tf == 'true' || needs.changes.outputs.force == 'true'
+    env:
+      TF_VAR_iap_members: ${{ toJSON(fromJSON(vars.TF_VAR_IAP_MEMBERS)) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
