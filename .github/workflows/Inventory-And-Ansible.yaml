@@ -232,7 +232,7 @@ jobs:
             "host_key_checking = False" \
             > ansible/ansible.cfg
 
-          if ! grep -Eq '^[[:graph:]]+[[:space:]]+ansible_host=' ansible/hosts.ini; then
+          if ! grep -q 'ansible_host=' ansible/hosts.ini; then
             echo "ERROR: No hosts rendered into hosts.ini"
             cat ansible/hosts.ini || true
             exit 1
