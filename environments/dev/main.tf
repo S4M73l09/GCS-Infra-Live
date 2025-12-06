@@ -34,7 +34,7 @@ resource "google_compute_project_metadata_item" "block_project_ssh_keys" {
   count      = var.block_project_ssh_keys ? 1 : 0
   project    = var.project_id
   key        = "block-project-ssh-keys"
-  value      = "TRUE"
+  value      = "FALSE"
   depends_on = [google_project_service.oslogin]
 }
 
