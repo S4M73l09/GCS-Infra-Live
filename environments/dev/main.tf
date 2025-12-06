@@ -96,7 +96,8 @@ resource "google_compute_router_nat" "ubuntudev_nat" {
   enable_endpoint_independent_mapping = true
 
   log_config {
-    enable = false
+    enable = true
+    filter = "ERRORS_ONLY"
   }
 }
 
