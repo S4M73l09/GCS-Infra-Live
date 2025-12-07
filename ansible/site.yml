@@ -39,6 +39,12 @@
         state: directory
         mode: "0755"
 
+    - name: Crear carpeta docker para monitoring
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}/docker"
+        state: directory
+        mode: "0755"
+
     - name: Crear carpeta base de web
       ansible.builtin.file:
         path: "{{ web01_base_dir  }}"
@@ -61,7 +67,7 @@
 
     - name: Copiar archivos nginx web
       ansible.builtin.copy:
-       src: files/web/
+       src: web/
        dest: "{{ web01_base_dir }}/"
        mode: "0644"
       notify: restart monitoring stack

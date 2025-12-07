@@ -112,19 +112,25 @@ ansible/
 
 ## Folder structure in the VM
 ```makefile
-- `/opt/monitoring`
-  - `docker-compose.yml` (Prometheus, Alertmanager, Grafana, Blackbox, node-exporter, web)
-  - `prometheus/`
-    - `prometheus.yml`
-    - `rules/alerts.yml`
-  - `alertmanager/`
-    - `alertmanager.yml`
-  - `grafana/`
-    - provisioning, datasources, dashboards, etc.
-- `/opt/web01`
-  - `index.html`
-  - `styles.css`
-  - (cualquier otro estático de la página)
+/opt
+├─ monitoring/
+│  ├─ docker/
+│  │  └─ docker-compose.yml                # rendered from templates/monitoring/docker-compose.yml.j2
+│  ├─ prometheus/
+│  │  ├─ prometheus.yml                    # copied from files/monitoring/prometheus/prometheus.yml
+│  │  └─ rules/
+│  │     └─ alerts.yml                     # copied from files/monitoring/prometheus/rules/alerts.yml
+│  ├─ alertmanager/
+│  │  └─ alertmanager.yml                  # rendered from templates/monitoring/alertmanager.yml.j2
+│  └─ grafana/
+│     └─ provisioning/
+│        ├─ datasources/
+│        │  └─ datasources.yml             # copied from files/monitoring/grafana/provisioning/datasources/datasources.yml
+│        └─ dashboards/                    # directory copied from files/monitoring/grafana/provisioning/dashboards (currently empty)
+└─ web01/
+   ├─ index.html                           # copied from ansible/web/index.html
+   └─ style.css                            # copied from ansible/web/style.css
+
 ```  
 
 

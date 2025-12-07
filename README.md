@@ -91,19 +91,25 @@ ansible/
 ## Estructura de carpetas en la VM
 
 ```makefile
-- `/opt/monitoring`
-  - `docker-compose.yml` (Prometheus, Alertmanager, Grafana, Blackbox, node-exporter, web)
-  - `prometheus/`
-    - `prometheus.yml`
-    - `rules/alerts.yml`
-  - `alertmanager/`
-    - `alertmanager.yml`
-  - `grafana/`
-    - provisioning, datasources, dashboards, etc.
-- `/opt/web01`
-  - `index.html`
-  - `styles.css`
-  - (cualquier otro estático de la página)
+/opt
+├─ monitoring/
+│  ├─ docker/
+│  │  └─ docker-compose.yml                # desde templates/monitoring/docker-compose.yml.j2
+│  ├─ prometheus/
+│  │  ├─ prometheus.yml                    # de files/monitoring/prometheus/prometheus.yml
+│  │  └─ rules/
+│  │     └─ alerts.yml                     # de files/monitoring/prometheus/rules/alerts.yml
+│  ├─ alertmanager/
+│  │  └─ alertmanager.yml                  # de templates/monitoring/alertmanager.yml.j2
+│  └─ grafana/
+│     └─ provisioning/
+│        ├─ datasources/
+│        │  └─ datasources.yml             # de files/monitoring/grafana/provisioning/datasources/datasources.yml
+│        └─ dashboards/                    # carpeta creada (vacía hasta que agregues dashboards en files/monitoring/grafana/provisioning/dashboards)
+└─ web01/
+   ├─ index.html                           # copiado de ansible/web/index.html
+   └─ style.css                            # copiado de ansible/web/style.css
+
 ```
 
 
