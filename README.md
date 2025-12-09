@@ -49,6 +49,7 @@ Este documento resume los cambios realizados en main para ejecutar configuracion
 
 ## Estructura recomendada del repositorio (En proceso)
 ```bash
+environments/dev                     # (Ya añadido por mergear a main)
 ansible/
   site.yml
   requirements.yml
@@ -71,6 +72,9 @@ ansible/
       monitoring/
         alertmanager.yml.j2         # (Plantilla que generara el Alertmanager.yml)
         docker-compose.yml.j2       # (Plantilla para docker-compose.yml)
+README.md
+README.en.md
+renovate.json
 ```
 ---
 ## Cómo funciona el pipeline completo

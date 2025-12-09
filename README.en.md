@@ -62,6 +62,7 @@ This document summarizes the changes made on `main` to safely run Ansible config
 ## Recommended repository structure (In progress)
 
 ```bash
+environments/dev                     # (already added to merge main)
 ansible/
   site.yml
   requirements.yml
@@ -84,6 +85,9 @@ ansible/
         monitoring/
           alertmanager.yml.j2         # (Template that will generate Alertmanager.yml)
           docker-compose.yml.j2       # (Template for docker-compose.yml) 
+README.md
+README.en.md
+renovate.json
 ```
 
 ## How the full pipeline works
