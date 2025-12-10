@@ -97,23 +97,23 @@ renovate.json
 ```makefile
 /opt
 ├─ monitoring/
-│  ├─ docker/
-│  │  └─ docker-compose.yml                # desde templates/monitoring/docker-compose.yml.j2
+│  ├─ docker/                       # directorio de trabajo del compose
+│  │  └─ docker-compose.yml         # generado por Ansible
 │  ├─ prometheus/
-│  │  ├─ prometheus.yml                    # de files/monitoring/prometheus/prometheus.yml
-│  │  └─ rules/
-│  │     └─ alerts.yml                     # de files/monitoring/prometheus/rules/alerts.yml
+│  │  ├─ prometheus.yml             # bind: ../prometheus/prometheus.yml -> /etc/prometheus/prometheus.yml
+│  │  └─ rules/                     # bind: ../prometheus/rules -> /etc/prometheus/rules
 │  ├─ alertmanager/
-│  │  └─ alertmanager.yml                  # de templates/monitoring/alertmanager.yml.j2
+│  │  └─ alertmanager.yml           # bind: ../alertmanager/alertmanager.yml -> /etc/alertmanager/alertmanager.yml
 │  └─ grafana/
-│     └─ provisioning/
-│        ├─ datasources/
-│        │  └─ datasources.yml             # de files/monitoring/grafana/provisioning/datasources/datasources.yml
-│        └─ dashboards/                    # carpeta creada (vacía hasta que agregues dashboards en files/monitoring/grafana/provisioning/dashboards)
-└─ web01/
-   ├─ index.html                           # copiado de ansible/web/index.html
-   └─ style.css                            # copiado de ansible/web/style.css
-
+│     └─ provisioning/              # bind: ../grafana/provisioning -> /etc/grafana/provisioning
+│
+├─ web01/                           # bind: /opt/web01 -> /usr/share/nginx/html (servicio web)
+│   ├─ index.html
+│   └─ style.css
+│
+└─ volumes (Docker-managed):
+    ├─ prometheus-data              # volumen nombrado (datos de Prometheus)
+    └─ grafana-data                 # volumen nombrado (datos de Grafana)
 ```
 
 
