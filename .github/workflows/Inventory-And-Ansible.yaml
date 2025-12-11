@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows: ["terraform-apply"] # nombre exacto del workflow de apply
+    branches: [main]
     types: [completed]
 
 permissions:
@@ -457,16 +458,50 @@ jobs:
             fi
           done < ansible/hosts_with_zones.list
 
-  publish_tunnel_instructions:
-    name: Publish tunnel commands
-    needs: [resolve-env, generate_inventory, run_ansible]
+  # ──────────────────────────────────────────────────────────────
+  # 4) Construir instrucciones de túnel IAP a servicios (Prometheus, Grafana, Nginx)
+  # ──────────────────────────────────────────────────────────────
+  build-tunnel:
     runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - generate-inventory
     steps:
-      - name: Download inventory artifact
+      - name: Checkout infra-live repo
+        uses: actions/checkout@v4
+
+      - name: Download generated inventory
         uses: actions/download-artifact@v4
         with:
-          name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
+          name: ansible-inventory-${{ needs.prepare.outputs.env }}
           path: ansible
+
+      - name: Build hosts_with_zones helper
+        run: |
+          set -euo pipefail
+
+          INVENTORY_FILE="ansible/hosts.generated"
+          OUTPUT_FILE="ansible/hosts_with_zones.list"
+
+          HOST_LINE=$(grep -E '^[^[]' "$INVENTORY_FILE" | head -n1 || true)
+
+          if [ -z "$HOST_LINE" ]; then
+            echo "ERROR: no se encontró ninguna línea de host en $INVENTORY_FILE"
+            cat "$INVENTORY_FILE"
+            exit 1
+          fi
+
+          HOST=$(echo "$HOST_LINE" | awk '{print $1}')
+          ZONE=$(echo "$HOST_LINE" | sed -n 's/.*gcp_zone=\([^ ]*\).*/\1/p')
+
+          if [ -z "$ZONE" ]; then
+            echo "WARN: no se pudo extraer gcp_zone, usando placeholder"
+            ZONE="<zone>"
+          fi
+
+          echo "$HOST $ZONE" > "$OUTPUT_FILE"
+          echo "Generado $OUTPUT_FILE:"
+          cat "$OUTPUT_FILE"
 
       - name: Build tunnel instructions
         run: |
@@ -481,35 +516,23 @@ jobs:
           fi
 
           cat > tunnel.txt <<EOF
-# Open Prometheus tunnel (9090) via SSH (IAP)
-gcloud compute ssh ${HOST} \\
-  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-  --zone=${ZONE} \\
-  -- -L9090:localhost:9090
+          # Open Prometheus tunnel (9090) via SSH (IAP)
+          gcloud compute ssh ${HOST}             --project=${{ vars.GCP_INFRA_PROJECT_ID }}             --zone=${ZONE}             -- -L9090:localhost:9090
 
-# Open Grafana tunnel (3000)
-gcloud compute ssh ${HOST} \\
-  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-  --zone=${ZONE} \\
-  -- -L3000:localhost:3000
+          # Open Grafana tunnel (3000)
+          gcloud compute ssh ${HOST}             --project=${{ vars.GCP_INFRA_PROJECT_ID }}             --zone=${ZONE}             -- -L3000:localhost:3000
 
-# Open Nginx landing page (80)
-gcloud compute ssh ${HOST} \\
-  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-  --zone=${ZONE} \\
-  -- -L8080:localhost:80
+          # Open Nginx landing page (80)
+          gcloud compute ssh ${HOST}             --project=${{ vars.GCP_INFRA_PROJECT_ID }}             --zone=${ZONE}             -- -L8080:localhost:80
 
-# SSH a la VM (shell) via IAP
-gcloud compute ssh ${HOST} \\
-  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-  --zone=${ZONE} \\
-  --tunnel-through-iap
+          # SSH a la VM (shell) via IAP
+          gcloud compute ssh ${HOST}             --project=${{ vars.GCP_INFRA_PROJECT_ID }}             --zone=${ZONE}             --tunnel-through-iap
 
-# Luego navega a:
-#   Prometheus -> http://localhost:9090
-#   Grafana    -> http://localhost:3000
-#   Nginx      -> http://localhost:8080
-EOF
+          # Luego navega a:
+          #   Prometheus -> http://localhost:9090
+          #   Grafana    -> http://localhost:3000
+          #   Nginx      -> http://localhost:8080
+          EOF
 
           cat tunnel.txt
 

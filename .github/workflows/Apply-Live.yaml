@@ -216,6 +216,17 @@ jobs:
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform apply -input=false -lock-timeout=5m tfplan.bin
 
+      - name: Export Terraform outputs
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: terraform output -json > outputs.json
+
+      - name: Upload terraform outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-outputs-${{ needs.changes.outputs.env }}
+          path: ${{ needs.changes.outputs.dir }}/outputs.json
+          retention-days: 3
+
   # ──────────────────────────────────────────────────────────────
   # 4) Publicar artefacto con el nombre del entorno
   # ──────────────────────────────────────────────────────────────
