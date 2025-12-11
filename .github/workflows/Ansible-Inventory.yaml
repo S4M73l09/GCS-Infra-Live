@@ -165,7 +165,7 @@ jobs:
           gcloud compute instances list \
             --project="${GCP_PROJECT}" \
             --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
-            --format="value(name,zone)" \
+            --format="value(name,zone.basename())" \
             > ansible/hosts_with_zones.list
 
           echo "=== ansible/hosts.list ==="
