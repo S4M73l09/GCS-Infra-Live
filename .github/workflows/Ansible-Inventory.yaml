@@ -186,7 +186,7 @@ jobs:
           TMP_DIR=$(mktemp -d)
           trap 'rm -rf "${TMP_DIR}"' EXIT
 
-          while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
+          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
@@ -247,7 +247,7 @@ jobs:
             exit 0
           fi
 
-          while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
+          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
@@ -298,10 +298,10 @@ jobs:
           echo "Rendering inventory with SSH user ${ANSIBLE_SSH_USER}"
           {
             echo "[gce]"
-            while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
-              if [ -z "$INSTANCE_NAME" ]; then
-                continue
-              fi
+          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
+            if [ -z "$INSTANCE_NAME" ]; then
+              continue
+            fi
               INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
               INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
               if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
@@ -466,7 +466,7 @@ jobs:
           TMP_DIR=$(mktemp -d)
           trap 'rm -rf "${TMP_DIR}"' EXIT
 
-          while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
+          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
