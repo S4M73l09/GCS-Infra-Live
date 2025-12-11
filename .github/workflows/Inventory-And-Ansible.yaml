@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   workflow_run:
     workflows: ["terraform-apply"] # nombre exacto del workflow de apply
+    branches: [main]
     types: [completed]
 
 permissions:
@@ -20,7 +21,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────
   resolve-env:
     name: Resolve environment from trigger
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       env: ${{ steps.set-env.outputs.env }}
@@ -35,7 +36,12 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
       - name: Read env from file
         id: set-env
-        run: echo "env=$(cat env.txt)" >> $GITHUB_OUTPUT
+        run: |
+          if [ ! -f env.txt ]; then
+            echo "Missing env.txt from triggering workflow" >&2
+            exit 1
+          fi
+          echo "env=$(cat env.txt)" >> $GITHUB_OUTPUT
 
   # ──────────────────────────────────────────────────────────────
   # 1) Generar inventario para el entorno detectado, y verificar si las instances están arrancadas.
@@ -82,14 +88,14 @@ jobs:
           
           # List all instances for the environment, filter for TERMINATED ones
           STOPPED_INSTANCES=$(gcloud compute instances list \
-            --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=TERMINATED" \
+            --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND (status=TERMINATED OR status=STOPPED OR status=SUSPENDED)" \
             --format="value(name,zone)")
 
           if [ -z "$STOPPED_INSTANCES" ]; then
             echo "No stopped instances found for environment: ${{ needs.resolve-env.outputs.env }}"
           else
             echo "Found stopped instances. Attempting to start them:"
-            echo "$STOPPED_INSTANCES" | while read -r INSTANCE_NAME INSTANCE_ZONE; do
+            echo "$STOPPED_INSTANCES" | while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
               echo "Starting instance: $INSTANCE_NAME in zone: $INSTANCE_ZONE"
               gcloud compute instances start "$INSTANCE_NAME" --zone="$INSTANCE_ZONE" --quiet
             done
@@ -110,11 +116,11 @@ jobs:
                 --filter="labels.env=${{ needs.resolve-env.outputs.env }}" \
                 --format="value(name)")
               
-              # Count total instances and running instances
-              TOTAL_COUNT=$(echo "$ALL_INSTANCES" | wc -l)
-              RUNNING_COUNT=$(echo "$RUNNING_INSTANCES" | wc -l)
+              # Count total instances and running instances (solo líneas no vacías)
+              TOTAL_COUNT=$(echo "$ALL_INSTANCES" | grep -c . || true)
+              RUNNING_COUNT=$(echo "$RUNNING_INSTANCES" | grep -c . || true)
               
-              if [ "$TOTAL_COUNT" -eq "$RUNNING_COUNT" ]; then
+              if [ "$TOTAL_COUNT" -eq "$RUNNING_COUNT" ] && [ "$TOTAL_COUNT" -gt 0 ]; then
                 echo "All instances are now running."
                 break
               else
@@ -171,7 +177,7 @@ jobs:
           TMP_DIR=$(mktemp -d)
           trap 'rm -rf "${TMP_DIR}"' EXIT
 
-          while read -r INSTANCE_NAME INSTANCE_ZONE; do
+          while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
@@ -211,7 +217,7 @@ jobs:
             exit 0
           fi
 
-          while read -r INSTANCE_NAME INSTANCE_ZONE; do
+          while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
@@ -255,7 +261,7 @@ jobs:
           echo "Rendering inventory with SSH user ${ANSIBLE_SSH_USER}"
           {
             echo "[gce]"
-            while read -r INSTANCE_NAME INSTANCE_ZONE; do
+            while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
               if [ -z "$INSTANCE_NAME" ]; then
                 continue
               fi
@@ -347,8 +353,8 @@ jobs:
 
           # 2) Si no hay fichero, se avisa pero NO es un error fatal
           if [ ! -f ~/.ssh/config ]; then
-            echo ""WARNING: ~/.ssh/config file does not exist."
-            echo ""Esto es normal si las VMs no tienen IP pública: 'gcloud compute config-ssh' sólo actualiza metadatos."
+            echo "WARNING: ~/.ssh/config file does not exist."
+            echo "Esto es normal si las VMs no tienen IP pública: 'gcloud compute config-ssh' sólo actualiza metadatos."
             exit 0
           fi
           
@@ -417,7 +423,7 @@ jobs:
           TMP_DIR=$(mktemp -d)
           trap 'rm -rf "${TMP_DIR}"' EXIT
 
-          while read -r INSTANCE_NAME INSTANCE_ZONE; do
+          while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
