@@ -194,7 +194,15 @@ jobs:
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
-          echo "Updating SSH keys for ${INSTANCE_NAME} (${INSTANCE_ZONE})"
+            # Limpia posibles \r o espacios residuales
+            INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+            INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
+
+            if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
+              echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
+              continue
+            fi
+          echo "Updating SSH keys for '${INSTANCE_NAME}' in zone '${INSTANCE_ZONE}'"
           CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
             --project="${GCP_PROJECT}" \
             --zone="${INSTANCE_ZONE}" \
