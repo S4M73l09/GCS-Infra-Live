@@ -165,11 +165,13 @@ jobs:
           gcloud compute instances list \
             --project="${GCP_PROJECT}" \
             --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
-            --format="value(name,zone.basename())" \
+            --format="value(name,zone)" \
             > ansible/hosts_with_zones.list
 
           echo "=== ansible/hosts.list ==="
           cat ansible/hosts.list || echo "NO INSTANCES FOUND"
+          echo "=== ansible/hosts_with_zones.list ==="
+          cat ansible/hosts_with_zones.list || echo "NO INSTANCES WITH ZONE"
 
       - name: Install ephemeral SSH key on instances
         env:
