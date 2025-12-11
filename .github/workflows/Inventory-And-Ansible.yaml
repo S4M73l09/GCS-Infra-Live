@@ -1,4 +1,4 @@
-name: Inventory-And-Ansible
+name: inventory-and-ansible
 
 on:
   workflow_dispatch:
