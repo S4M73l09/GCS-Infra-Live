@@ -1,7 +1,12 @@
-name: Inventory-And-Ansible
+name: Ansible-Inventory
 
 on:
   workflow_dispatch:
+    inputs:
+      env:
+        description: "Environment label (e.g. dev)"
+        required: false
+        default: "dev"
   workflow_run:
     workflows: ["terraform-apply"] # nombre exacto del workflow de apply
     branches: [main]
@@ -29,6 +34,7 @@ jobs:
       actions: read # Requerido para descargar artefactos de otros workflows
     steps:
       - name: Download env artifact from triggering workflow
+        if: ${{ github.event_name == 'workflow_run' }}
         uses: actions/download-artifact@v4
         with:
           name: applied-env
@@ -37,6 +43,11 @@ jobs:
       - name: Read env from file
         id: set-env
         run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "env=${{ inputs.env }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ ! -f env.txt ]; then
             echo "Missing env.txt from triggering workflow" >&2
             exit 1
