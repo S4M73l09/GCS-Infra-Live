@@ -4,6 +4,13 @@
 
 This document summarizes the changes made on `main` to safely run Ansible configurations after `terraform apply`, using `OS Login + IAP` (no SSH keys and no public port 22) and an inventory generated *on-the-fly*.
 
+## 🔍 Health status of the environment
+
+[![Health report](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml/badge.svg)](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml)
+
+This line is an example of using Python to create an alert system and reports that are saved in the Github artifacts.
+
+
 ## What was added
 
 ### 1) Chained workflow: Inventory-And-Ansible.yaml
@@ -347,6 +354,10 @@ The Ansible step in the workflow passes these secrets to the playbook as `-e` va
   * Youtube video embeds showing the Bootstrap/repo-Live of the infrastructure
   * Links to the Bootstrap and Infra-Live repositories
 * HTML/CSS content lives in the repo under `ansible/web` and is copied to `/opt/web01` using Ansible.
+
+## Artifacts and visibility
+
+In each run of the `Ansible` workflow at the end of everything, a artifact is generated that can be downloaded from which you can connect to the VM using its real name and other ways using `IAP-Tunnel`.
 
 ## Local validation (WSL)
 

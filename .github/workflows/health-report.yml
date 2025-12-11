@@ -1,0 +1,49 @@
+name: health-report
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"  # cada 15 minutos
+  workflow_dispatch:
+
+jobs:
+  health_check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Run health check
+        id: health
+        env:
+          PROM_URL: "http://IP_O_DNS_DE_TU_PROMETHEUS:9090"
+        run: |
+          output=$(python scripts/health_check.py)
+          echo "$output"
+
+          report_file=$(echo "$output" | grep '^REPORT_FILE=' | cut -d'=' -f2)
+          severity=$(echo "$output" | grep '^SEVERITY=' | cut -d'=' -f2)
+
+          echo "report_file=$report_file" >> $GITHUB_OUTPUT
+          echo "severity=$severity" >> $GITHUB_OUTPUT
+
+      - name: Upload health report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report-${{ steps.health.outputs.severity }}
+          path: ${{ steps.health.outputs.report_file }}
+          retention-days: 14
+
+      # Solo fallar si es WARN o CRIT (no en OFFLINE ni en OK)
+      - name: Fail job on WARN/CRIT
+        if: ${{ steps.health.outputs.severity == 'WARN' || steps.health.outputs.severity == 'CRIT' }}
+        run: |
+          echo "Se ha detectado un estado ${{ steps.health.outputs.severity }} en el sistema. Revisa el artifact adjunto."
+          exit 1

@@ -450,3 +450,66 @@ jobs:
                 --metadata-from-file ssh-keys="${TMP_DIR}/ssh-keys"
             fi
           done < ansible/hosts_with_zones.list
+
+  publish_tunnel_instructions:
+    name: Publish tunnel commands
+    needs: [resolve-env, generate_inventory, run_ansible]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
+          path: ansible
+
+      - name: Build tunnel instructions
+        run: |
+          set -euo pipefail
+          HOST_LINE=$(head -n1 ansible/hosts_with_zones.list || true)
+          HOST=$(echo "$HOST_LINE" | awk '{print $1}')
+          ZONE=$(echo "$HOST_LINE" | awk '{print $2}')
+
+          if [ -z "$HOST" ] || [ -z "$ZONE" ]; then
+            HOST="<vm-name>"
+            ZONE="<zone>"
+          fi
+
+          cat > tunnel.txt <<EOF
+# Open Prometheus tunnel (9090) via SSH (IAP)
+gcloud compute ssh ${HOST} \\
+  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
+  --zone=${ZONE} \\
+  -- -L9090:localhost:9090
+
+# Open Grafana tunnel (3000)
+gcloud compute ssh ${HOST} \\
+  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
+  --zone=${ZONE} \\
+  -- -L3000:localhost:3000
+
+# Open Nginx landing page (80)
+gcloud compute ssh ${HOST} \\
+  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
+  --zone=${ZONE} \\
+  -- -L8080:localhost:80
+
+# SSH a la VM (shell) via IAP
+gcloud compute ssh ${HOST} \\
+  --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
+  --zone=${ZONE} \\
+  --tunnel-through-iap
+
+# Luego navega a:
+#   Prometheus -> http://localhost:9090
+#   Grafana    -> http://localhost:3000
+#   Nginx      -> http://localhost:8080
+EOF
+
+          cat tunnel.txt
+
+      - name: Upload tunnel commands
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-tunnel-${{ needs.resolve-env.outputs.env }}
+          path: tunnel.txt
+          retention-days: 14

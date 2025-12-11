@@ -86,7 +86,7 @@ groups:
 
       # Disco en solo lectura (muy serio)
       - alert: FilesystemReadOnly
-        expr: node_filesystem_readonly{fstype!~"tmpfs|overlay|squashfs"} == 1
+        expr: node_filesystem_readonly{fstype!~"tmpfs|ramfs|overlay|squashfs", mountpoint!~"/run(/|$)|/proc(/|$)|/sys(/|$)|/dev(/|$)"} == 1
         for: 5m
         labels:
           severity: critical
@@ -103,4 +103,3 @@ groups:
         annotations:
           summary: "node_exporter caído en {{ $labels.instance }}"
           description: "El exporter de nodo (job=node_exporter) no responde desde hace más de 1 minuto."
-

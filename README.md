@@ -4,6 +4,12 @@
 
 Este documento resume los cambios realizados en main para ejecutar configuraciones de Ansible de forma segura después del terraform apply, usando `OS Login + IAP` (sin llaves SSH ni puerto 22 público) y un inventario generado `on-the-fly.`
 
+## 🔍 Estado de salud del entorno
+
+[![Health report](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml/badge.svg)](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml)
+
+Esta linea es un ejemplo de justo utilizar `Python` para crear un sistema de alertas y reports que se guardan de normal en los artifacts de Github, esto no esta actualmente puesto debido a que al usar tunel IAP para la conexion de VM, es imposible ponerlo para que se conecte.
+
 ## Qué se añadió
 ### 1) Workflow encadenado: Inventory-And-Ansible.yaml
 * Ubicación: `.github/workflows/Inventory-And-Ansible.yaml`
@@ -321,6 +327,10 @@ El step de Ansible en el workflow pasa estos secrets al playbook como variables 
    * Embeds de video de youtube mostrando el Bootstrap/repo-Live de la infraestructura
    * Enlaces a los repositorios de ***Bootstrap*** y ***Infra-Live***
 * El contenido HTML/CSS vive en el repo bajo `ansible/web` y se copia a `/opt/web01` mediante Ansible.
+
+## Artifacts y visibilidad 
+
+En cada run del workflow de `Ansible` al final de todo genera un artifact que se puede descargar el cual muestra el comando directo que se puede usar para conectarse a la VM usando su nombre real y demas utilizamdo `IAP-Tunnel`.
 
 ## Validacíon local (WSL)
 
