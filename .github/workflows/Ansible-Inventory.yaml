@@ -202,22 +202,22 @@ jobs:
               echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
               continue
             fi
-          echo "Updating SSH keys for '${INSTANCE_NAME}' in zone '${INSTANCE_ZONE}'"
+            ZONE_ARG=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
+            echo "Updating SSH keys for '${INSTANCE_NAME}' in zone '${ZONE_ARG}'"
           CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
             --project="${GCP_PROJECT}" \
-            --zone="${INSTANCE_ZONE}" \
+            --zone="${ZONE_ARG}" \
             --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
 
           if [ -z "$CURRENT_KEYS" ] && [ -n "$INSTANCE_ZONE" ]; then
             # Intentar parsear zona con basename si viene como ruta completa
-            Z_BASENAME=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
-            if [ "$Z_BASENAME" != "$INSTANCE_ZONE" ]; then
-              echo "Retrying with zone basename: ${Z_BASENAME}"
+            if [ "$ZONE_ARG" != "$INSTANCE_ZONE" ]; then
+              echo "Retrying with zone basename: ${ZONE_ARG}"
               CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
                 --project="${GCP_PROJECT}" \
-                --zone="${Z_BASENAME}" \
+                --zone="${ZONE_ARG}" \
                 --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
-              INSTANCE_ZONE="$Z_BASENAME"
+              INSTANCE_ZONE="$ZONE_ARG"
             fi
           fi
 
@@ -255,14 +255,21 @@ jobs:
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
+            INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+            INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
+            if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
+              echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
+              continue
+            fi
 
-            echo "Warming up SSH access for ${INSTANCE_NAME} (${INSTANCE_ZONE})"
+            ZONE_ARG=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
+            echo "Warming up SSH access for ${INSTANCE_NAME} (${ZONE_ARG})"
             for attempt in $(seq 1 5); do
               if ssh \
                 -i "${ANSIBLE_SSH_KEY_PATH}" \
                 -o StrictHostKeyChecking=no \
                 -o UserKnownHostsFile=/dev/null \
-                -o ProxyCommand="gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet" \
+                -o ProxyCommand="gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${ZONE_ARG} --listen-on-stdin --quiet" \
                 "${ANSIBLE_SSH_USER}@127.0.0.1" \
                 "true"; then
                 echo "SSH warm-up succeeded for ${INSTANCE_NAME}"
