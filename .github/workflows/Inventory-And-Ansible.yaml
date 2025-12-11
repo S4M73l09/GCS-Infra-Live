@@ -1,6 +1,7 @@
 name: Inventory-And-Ansible
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["terraform-apply"] # nombre exacto del workflow de apply
     branches: [main]
