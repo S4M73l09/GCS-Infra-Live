@@ -159,14 +159,10 @@ jobs:
           gcloud compute instances list \
             --project="${GCP_PROJECT}" \
             --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
-            --format="value(name)" \
-            > ansible/hosts.list
-
-          gcloud compute instances list \
-            --project="${GCP_PROJECT}" \
-            --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
-            --format="value(name,zone)" \
+            --format="value(name,zone.basename())" \
             > ansible/hosts_with_zones.list
+
+          cut -f1 ansible/hosts_with_zones.list > ansible/hosts.list || true
 
           echo "=== ansible/hosts.list ==="
           cat ansible/hosts.list || echo "NO INSTANCES FOUND"
@@ -304,6 +300,12 @@ jobs:
             echo "[gce]"
             while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
               if [ -z "$INSTANCE_NAME" ]; then
+                continue
+              fi
+              INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+              INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
+              if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
+                echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
                 continue
               fi
 
