@@ -194,11 +194,24 @@ jobs:
             if [ -z "$INSTANCE_NAME" ]; then
               continue
             fi
-            echo "Updating SSH keys for ${INSTANCE_NAME} (${INSTANCE_ZONE})"
-            CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
-              --project="${GCP_PROJECT}" \
-              --zone="${INSTANCE_ZONE}" \
-              --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
+          echo "Updating SSH keys for ${INSTANCE_NAME} (${INSTANCE_ZONE})"
+          CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
+            --project="${GCP_PROJECT}" \
+            --zone="${INSTANCE_ZONE}" \
+            --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
+
+          if [ -z "$CURRENT_KEYS" ] && [ -n "$INSTANCE_ZONE" ]; then
+            # Intentar parsear zona con basename si viene como ruta completa
+            Z_BASENAME=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
+            if [ "$Z_BASENAME" != "$INSTANCE_ZONE" ]; then
+              echo "Retrying with zone basename: ${Z_BASENAME}"
+              CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
+                --project="${GCP_PROJECT}" \
+                --zone="${Z_BASENAME}" \
+                --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
+              INSTANCE_ZONE="$Z_BASENAME"
+            fi
+          fi
 
             if [ -n "$CURRENT_KEYS" ] && printf '%s\n' "$CURRENT_KEYS" | grep -Fxq "$ENTRY"; then
               echo "Key already present on ${INSTANCE_NAME}, skipping."
