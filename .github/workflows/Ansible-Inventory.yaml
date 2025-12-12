@@ -61,6 +61,8 @@ jobs:
     name: Generate inventory
     needs: resolve-env
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/googlecloudplatform/cloud-sdk:latest
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -356,6 +358,8 @@ jobs:
     name: Run Ansible
     needs: [resolve-env, generate_inventory]
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/googlecloudplatform/cloud-sdk:latest
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -430,6 +434,16 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ansible
+
+      - name: Cache Ansible collections and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ansible/collections
+            ~/.cache/pip
+          key: ansible-cache-${{ runner.os }}-${{ hashFiles('ansible/requirements.yml') }}
+          restore-keys: |
+            ansible-cache-${{ runner.os }}-
 
       - name: Install Ansible Collections
         run: ansible-galaxy collection install -r ansible/requirements.yml

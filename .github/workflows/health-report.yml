@@ -2,7 +2,7 @@ name: health-report
 
 on:
   schedule:
-    - cron: "*/15 * * * *"  # cada 15 minutos
+    - cron: "0 3 * * *"  # una vez al día a las 03:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -35,11 +35,42 @@ jobs:
           echo "severity=$severity" >> $GITHUB_OUTPUT
 
       - name: Upload health report artifact
+        if: ${{ steps.health.outputs.severity != 'OK' }}
         uses: actions/upload-artifact@v4
         with:
           name: health-report-${{ steps.health.outputs.severity }}
           path: ${{ steps.health.outputs.report_file }}
-          retention-days: 14
+          retention-days: 7
+
+      - name: Cleanup old health-report artifacts (older than 7 days)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          NOW=$(date -u +%s)
+          MAX_AGE_DAYS=7
+          MAX_AGE_SECONDS=$((MAX_AGE_DAYS*86400))
+
+          artifacts=$(gh api -H "Accept: application/vnd.github+json" \
+            /repos/$REPO/actions/artifacts \
+            --jq '.artifacts[] | select(.name | startswith("health-report-")) | {id: .id, name: .name, created_at: .created_at}')
+
+          if [ -z "$artifacts" ]; then
+            echo "No health-report artifacts found."
+            exit 0
+          fi
+
+          echo "$artifacts" | while read -r line; do
+            id=$(echo "$line" | jq -r '.id')
+            created=$(echo "$line" | jq -r '.created_at')
+            created_ts=$(date -d "$created" +%s)
+            age=$((NOW - created_ts))
+            if [ $age -ge $MAX_AGE_SECONDS ]; then
+              echo "Deleting artifact $id (created: $created)"
+              gh api -X DELETE /repos/$REPO/actions/artifacts/$id
+            fi
+          done
 
       # Solo fallar si es WARN o CRIT (no en OFFLINE ni en OK)
       - name: Fail job on WARN/CRIT
