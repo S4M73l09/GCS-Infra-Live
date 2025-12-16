@@ -1,176 +1,257 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <title>Portfolio DevOps - Infraestructura en GCP</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCS Infra Live · Guía y Playbook</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="hero">
-    <div class="hero-content">
-      <h1>Infraestructura Automatizada en Google Cloud</h1>
-      <p class="subtitle">
-        Terraform · GitHub Actions · Ansible · Docker · Prometheus · Grafana · Cloudflare
-      </p>
-      <p class="tagline">
-        Proyecto práctico de infraestructura real, desplegado y configurado de forma 100% automatizada.
-      </p>
-    </div>
-  </header>
-
-  <main>
-    <!-- Sección: Resumen del proyecto -->
-    <section class="section">
-      <h2>Resumen del proyecto</h2>
-      <p>
-        Esta máquina virtual forma parte de un entorno <strong>GCP "live"</strong> gestionado con
-        <strong>Terraform</strong>. El despliegue de la infraestructura, la configuración del sistema
-        y los servicios que ves aquí están integrados en un flujo de trabajo DevOps completo:
-      </p>
-      <ul>
-        <li><strong>Terraform</strong> para crear la infraestructura (VM, red, firewall, etc.).</li>
-        <li><strong>GitHub Actions</strong> para ejecutar <em>plan</em> y <em>apply</em> de forma controlada.</li>
-        <li><strong>Ansible</strong> para la configuración automática de la VM y despliegue de Docker.</li>
-        <li><strong>Docker + docker-compose</strong> para levantar servicios como Grafana, Prometheus y esta web.</li>
-        <li><strong>Prometheus + Blackbox + node_exporter</strong> para monitorizar tanto la VM como la propia página.</li>
-        <li><strong>Cloudflare</strong> como capa de protección y publicación mediante dominio propio.</li>
-      </ul>
-    </section>
-
-    <!-- Sección: Arquitectura -->
-    <section class="section">
-      <h2>Arquitectura</h2>
-      <p>
-        El flujo general del proyecto es el siguiente:
-      </p>
-      <ol>
-        <li>
-          El repositorio de <strong>bootstrap</strong> define identidades, permisos y configuración inicial necesaria
-          para desplegar la infraestructura.
-        </li>
-        <li>
-          El repositorio de <strong>infra live</strong> define la infraestructura real: redes, VM, reglas de firewall,
-          backends remotos, etc.
-        </li>
-        <li>
-          Un pipeline de <strong>GitHub Actions</strong> ejecuta las fases de <code>terraform fmt</code>,
-          <code>validate</code>, <code>plan</code> y <code>apply</code>, usando autenticación OIDC.
-        </li>
-        <li>
-          Una vez creada la VM, <strong>Ansible</strong> la configura: instalación de Docker, despliegue de
-          Prometheus, Grafana, Blackbox y esta web estática.
-        </li>
-        <li>
-          <strong>Cloudflare</strong> publica el servicio por HTTPS y actúa como capa de protección y caché.
-        </li>
-      </ol>
-    </section>
-
-    <!-- Sección: Vídeos -->
-    <section class="section">
-      <h2>Vídeos del proyecto</h2>
-
-      <div class="video-grid">
-        <div class="video-card">
-          <h3>Demo completa de la infraestructura</h3>
-          <!-- Sustituye VIDEO_ID_1 por el ID real del vídeo de YouTube -->
-          <div class="video-wrapper">
-            <iframe
-              src="https://www.youtube.com/embed/VIDEO_ID_1"
-              title="Demo Infraestructura en GCP"
-              frameborder="0"
-              allowfullscreen
-            ></iframe>
-          </div>
-          <p class="video-links">
-            <a href="https://www.youtube.com/watch?v=VIDEO_ID_1" target="_blank" rel="noreferrer">
-              Abrir vídeo en YouTube
-            </a>
-          </p>
-        </div>
-
-        <div class="video-card">
-          <h3>Pipeline CI/CD (Terraform + GitHub Actions)</h3>
-          <!-- Sustituye VIDEO_ID_2 por el ID real del vídeo de YouTube -->
-          <div class="video-wrapper">
-            <iframe
-              src="https://www.youtube.com/embed/VIDEO_ID_2"
-              title="Pipeline CI/CD"
-              frameborder="0"
-              allowfullscreen
-            ></iframe>
-          </div>
-          <p class="video-links">
-            <a href="https://www.youtube.com/watch?v=VIDEO_ID_2" target="_blank" rel="noreferrer">
-              Abrir vídeo en YouTube
-            </a>
-          </p>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <span class="dot"></span>
+        <div>
+          <p class="eyebrow">GCS Infra Live</p>
+          <h1>Playbook · Terraform · Ansible</h1>
         </div>
       </div>
-    </section>
+      <div class="top-actions">
+        <input type="search" placeholder="Buscar sección..." aria-label="Buscar">
+        <div class="repo-links">
+          <a class="button ghost" href="https://github.com/S4M73l09/GCS-Infra-Live" target="_blank" rel="noreferrer">Repo Infra</a>
+          <a class="button ghost" href="https://github.com/S4M73l09/GCS-Bootstrap---Live" target="_blank" rel="noreferrer">Repo Bootstrap</a>
+        </div>
+      </div>
+      <button class="toc-toggle" aria-label="Mostrar índice">☰</button>
+    </header>
 
-    <!-- Sección: Observabilidad -->
-    <section class="section">
-      <h2>Monitorización y observabilidad</h2>
-      <p>
-        La infraestructura incluye un stack de observabilidad basado en <strong>Prometheus</strong> y
-        <strong>Grafana</strong>:
-      </p>
-      <ul>
-        <li><strong>Prometheus</strong> recolecta métricas de:
-          <ul>
-            <li><code>node_exporter</code> &rarr; salud de la VM (CPU, memoria, disco, red).</li>
-            <li><code>blackbox-exporter</code> &rarr; estado de esta página (HTTP 2xx, latencia, etc.).</li>
-            <li>Otros endpoints/servicios internos que se añadan en el futuro.</li>
+    <div class="layout">
+      <aside class="sidebar" id="sidebar">
+        <nav>
+          <p class="nav-title">Índice</p>
+          <ol>
+            <li><a href="#intro">Introducción</a></li>
+            <li><a href="#arquitectura">Arquitectura</a></li>
+            <li><a href="#terraform">Infra (Terraform)</a></li>
+            <li><a href="#cicd">CI/CD</a></li>
+            <li><a href="#ansible">Ansible</a></li>
+            <li><a href="#bootstrap">Bootstrap</a></li>
+            <li><a href="#acceso">Acceso / IAP</a></li>
+            <li><a href="#monitoring">Observabilidad</a></li>
+            <li><a href="#runbooks">Runbooks</a></li>
+            <li><a href="#changelog">Changelog</a></li>
+          </ol>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <section id="intro" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Bienvenida</p>
+            <h2>Infra Live en breve</h2>
+          </div>
+          <p>Infraestructura declarativa en GCP con Terraform, despliegue de configuración con Ansible y un stack de observabilidad (Prometheus, Grafana, Alertmanager). Acceso seguro vía IAP/OS Login y claves SSH efímeras.</p>
+          <div class="stats">
+            <div><span>Entorno</span><strong>dev</strong></div>
+            <div><span>Último apply</span><strong>terraform-apply</strong></div>
+            <div><span>Salud</span><strong>OK</strong></div>
+          </div>
+        </section>
+
+        <section id="bootstrap" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Plataforma</p>
+            <h2>Bootstrap</h2>
+          </div>
+          <p>Proyecto base separado (Bootstrap) que prepara bucket de estado, Service Account runner y Workload Identity Federation (WIF) para usar OIDC desde GitHub Actions sin JSON keys. Seguridad por IDs de repos y rama <code>main</code>.</p>
+          <ul class="bullets">
+            <li><strong>Recursos:</strong> bucket tfstate (PAP/UBLA/versioning), SA runner, pool/provider WIF.</li>
+            <li><strong>Condición WIF:</strong> restringir por <code>repository_id</code> y <code>refs/heads/main</code>; opcional owner_id.</li>
+            <li><strong>Secrets mínimos:</strong> <code>TF_SA_EMAIL</code> y <code>WIF_PROVIDER</code> en el repo Bootstrap.</li>
+            <li><strong>Workflows:</strong> Plan (tfplan artifact) y Apply disparado por workflow_run.</li>
           </ul>
-        </li>
-        <li><strong>Grafana</strong> muestra dashboards personalizados para el entorno.</li>
-      </ul>
-      <p>
-        De esta forma se monitoriza tanto la infraestructura interna como la experiencia externa a través del dominio
-        publicado mediante Cloudflare.
-      </p>
-    </section>
+          <div class="code-block">
+<pre><code># Condición CEL en el provider WIF (ejemplo)
+assertion.repository_id == '&lt;REPO_ID&gt;' &&
+assertion.ref == 'refs/heads/main'
 
-    <!-- Sección: Repositorios -->
-    <section class="section">
-      <h2>Código fuente</h2>
-      <p>
-        El código de este proyecto está disponible en GitHub:
-      </p>
-      <ul>
-        <li>
-          <strong>Repositorio Bootstrap:</strong>
-          <a href="https://github.com/S4M73l09/GCS-Bootstrap---Live"_blank" rel="noreferrer">
-            github.com/TU_USUARIO/TU_REPO_BOOTSTRAP
-          </a>
-        </li>
-        <li>
-          <strong>Repositorio Infra Live:</strong>
-          <a href="https://github.com/S4M73l09/GCS-Infra-Live" target="_blank" rel="noreferrer">
-            github.com/TU_USUARIO/TU_REPO_LIVE
-          </a>
-        </li>
-      </ul>
-    </section>
+# Binding a la SA (sin condición)
+roles/iam.workloadIdentityUser
+roles/iam.serviceAccountTokenCreator</code></pre>
+          </div>
+          <div class="callout info">
+            <p class="callout-title">Importante</p>
+            <p>Pon la lógica en el provider (assertion.*), no en el binding. Protege el bucket tfstate con PAP/UBLA/versioning.</p>
+          </div>
+        </section>
 
-    <!-- Sección: Contacto -->
-    <section class="section">
-      <h2>Contacto</h2>
-      <p>
-        Si te interesa este tipo de automatización de infraestructuras y pipelines DevOps, puedes contactar conmigo:
-      </p>
-      <ul>
-        <li>Email: <a href="mailto:saminfradevops@gmail.com">Mi correo </a></li>
-        <li>GitHub: <a href="https://github.com/S4M73l09" target="_blank" rel="noreferrer">Usuario de Github</a></li>
-        <!-- Añade si quieres LinkedIn, Malt, etc. -->
-      </ul>
-    </section>
-  </main>
+        <section id="arquitectura" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Visión</p>
+            <h2>Arquitectura</h2>
+          </div>
+          <ul class="bullets">
+            <li><strong>Infra:</strong> Terraform crea red, VM Ubuntu, Cloud NAT y reglas IAP.</li>
+            <li><strong>Acceso:</strong> SSH vía IAP + claves efímeras; OS Login opcional.</li>
+            <li><strong>Config:</strong> Ansible instala Docker y despliega monitoring + web.</li>
+            <li><strong>Observabilidad:</strong> Prometheus + Alertmanager + Grafana tras túnel.</li>
+          </ul>
+          <div class="callout info">
+            <p class="callout-title">Tip</p>
+            <p>Mantén el label <code>env=dev</code> en las instancias para que el inventario dinámico las detecte.</p>
+          </div>
+        </section>
 
-  <footer class="footer">
-    <p>© 2025 · Portfolio DevOps Cloud · Infraestructura en Google Cloud</p>
-  </footer>
+        <section id="terraform" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Infra</p>
+            <h2>Terraform</h2>
+          </div>
+          <p>Workflows <code>terraform-plan</code> y <code>terraform-apply</code> gestionan cambios. Outputs clave: red, VM, zona, reglas IAP, Cloud NAT.</p>
+          <div class="code-block">
+<pre><code>terraform init -input=false -lockfile=readonly
+terraform plan  -input=false -out=tfplan.bin
+terraform apply -input=false tfplan.bin</code></pre>
+          </div>
+          <div class="callout warning">
+            <p class="callout-title">Importante</p>
+            <p>Incluye tu cuenta/SA en <code>iap_members</code> para abrir túneles IAP. OS Login puede anular claves de proyecto si está activo globalmente.</p>
+          </div>
+        </section>
+
+        <section id="cicd" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Pipelines</p>
+            <h2>CI/CD</h2>
+          </div>
+          <ul class="bullets">
+            <li><strong>terraform-plan:</strong> Genera plan y artifacts.</li>
+            <li><strong>terraform-apply:</strong> Aplica en <code>main</code>, publica <code>applied-env</code>.</li>
+            <li><strong>Ansible-Inventory:</strong> GCloud + IAP, genera inventario y ejecuta playbook.</li>
+            <li><strong>health-report:</strong> Check diario, artifacts solo en WARN/CRIT.</li>
+          </ul>
+        </section>
+
+        <section id="ansible" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Config</p>
+            <h2>Ansible</h2>
+          </div>
+          <p>Inventario dinámico por label <code>env</code>, clave SSH efímera y túnel IAP. Playbook instala Docker, monitoring stack y la web estática.</p>
+          <div class="code-block">
+<pre><code>ansible-playbook -i ansible/hosts.ini ansible/site.yml</code></pre>
+          </div>
+          <div class="callout info">
+            <p class="callout-title">Acceso</p>
+            <p>El artifact <code>iap-tunnel-&lt;env&gt;</code> publica los comandos de túnel para Prometheus (9090), Grafana (3000) y Nginx (8080), además del SSH vía IAP.</p>
+          </div>
+        </section>
+
+        <section id="acceso" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Acceso</p>
+            <h2>Túneles IAP</h2>
+          </div>
+          <div class="code-block">
+<pre><code># Prometheus (9090)
+gcloud compute start-iap-tunnel &lt;vm-name&gt; 9090 \
+  --project=&lt;project-id&gt; \
+  --zone=&lt;zone&gt; \
+  --local-host-port=9090
+
+# Grafana (3000)
+gcloud compute start-iap-tunnel &lt;vm-name&gt; 3000 \
+  --project=&lt;project-id&gt; \
+  --zone=&lt;zone&gt; \
+  --local-host-port=3000
+
+# Nginx (80)
+gcloud compute start-iap-tunnel &lt;vm-name&gt; 80 \
+  --project=&lt;project-id&gt; \
+  --zone=&lt;zone&gt; \
+  --local-host-port=8080</code></pre>
+          </div>
+          <p>Reemplaza los placeholders por tu VM, proyecto y zona. Para shell interactiva usa: <code>gcloud compute ssh &lt;vm-name&gt; --project=&lt;project-id&gt; --zone=&lt;zone&gt; --tunnel-through-iap</code>.</p>
+        </section>
+
+        <section id="monitoring" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Observabilidad</p>
+            <h2>Monitoring stack</h2>
+          </div>
+          <ul class="bullets">
+            <li>Prometheus: <code>http://localhost:9090</code></li>
+            <li>Grafana: <code>http://localhost:3000</code></li>
+            <li>Nginx (web): <code>http://localhost:8080</code></li>
+          </ul>
+          <div class="callout info">
+            <p class="callout-title">Alertas</p>
+            <p>Alertmanager notifica vía SMTP (secrets). Ajusta reglas en <code>prometheus/rules/alerts.yml</code>. La alerta de solo lectura ignora tmpfs/ramfs.</p>
+          </div>
+        </section>
+
+        <section id="runbooks" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Runbooks</p>
+            <h2>Incidencias comunes</h2>
+          </div>
+          <ul class="bullets">
+            <li><strong>IAP 403/65535:</strong> Revisa rol IAP en SA y regla de firewall para 22 desde IAP.</li>
+            <li><strong>OS Login:</strong> Habilitar API y rol <code>roles/compute.osAdminLogin</code> en el proyecto correcto.</li>
+            <li><strong>Apt sin salida:</strong> Asegura Cloud NAT activo si no hay IP pública.</li>
+            <li><strong>Alertas RO fs:</strong> Ya filtrado tmpfs/ramfs; si persiste, revisa disco.</li>
+          </ul>
+        </section>
+
+        <section id="changelog" class="card">
+          <div class="section-head">
+            <p class="eyebrow">Historial</p>
+            <h2>Changelog</h2>
+          </div>
+          <ul class="timeline">
+            <li><span>2025-01</span> Optimiza túneles IAP y caché de Ansible.</li>
+            <li><span>2024-12</span> Añade health-report diario y limpieza de artifacts.</li>
+            <li><span>2024-11</span> Monitoring stack + web estática.</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <div>Infra Live · GCP</div>
+      <div class="footer-links">
+        <a href="https://github.com/S4M73l09/GCS-Infra-Live" target="_blank" rel="noreferrer">Repo</a>
+        <a href="https://github.com/S4M73l09/GCS-Infra-Live/issues" target="_blank" rel="noreferrer">Issues</a>
+        <a href="#runbooks">Runbooks</a>
+      </div>
+      <div class="build">Última build: hoy</div>
+    </footer>
+  </div>
+
+  <script>
+    // Botones de copiar código
+    document.querySelectorAll('.code-block').forEach(block => {
+      const btn = document.createElement('button');
+      btn.className = 'copy-btn';
+      btn.type = 'button';
+      btn.textContent = 'Copiar';
+      btn.addEventListener('click', () => {
+        const code = block.querySelector('code').innerText;
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = 'Copiado';
+          setTimeout(() => btn.textContent = 'Copiar', 1200);
+        });
+      });
+      block.appendChild(btn);
+    });
+
+    // Toggle sidebar en móvil
+    const toggle = document.querySelector('.toc-toggle');
+    const sidebar = document.getElementById('sidebar');
+    toggle?.addEventListener('click', () => {
+      sidebar.classList.toggle('open');
+    });
+  </script>
 </body>
 </html>

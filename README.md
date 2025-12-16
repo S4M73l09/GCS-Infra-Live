@@ -438,8 +438,123 @@ Con este flujo:
 
 * Puedes descargarlo desde la pestaña ***Actions*** del run correspondiente.
 
+## Acceso a VM sin IP pública con IAP + VS Code Remote-SSH
+
+Esta VM (`dev-oslogin-ubuntu`, `europe-west1-b`) **no tiene IP pública**.  
+El acceso se hace solo por:
+
+- **IAP (Identity-Aware Proxy)**  
+- **SSH** con `ProxyCommand` que llama a `gcloud` en WSL  
+- **VS Code Remote-SSH**  
+- **Port forwarding** para Nginx / Prometheus / Grafana
+
+---
+
+## 1. Requisitos
+
+### Local (Windows + WSL)
+
+- Windows 10/11 con **OpenSSH Client**.
+- **VS Code** + extensión **Remote - SSH**.
+- **WSL2 Ubuntu** con:
+  - Google Cloud SDK (`gcloud`) instalado.
+  - Proyecto configurado:
+    ```bash
+    gcloud auth login
+    gcloud config set project NAME-Project
+    ```
+  - Clave creada por `gcloud`:
+    `/home/USUARIO/.ssh/google_compute_engine`
+
+Copiar la clave de WSL a Windows:
+
+```bash
+mkdir -p /mnt/c/Users/USUARIO/.ssh
+cp /home/USUARIO/.ssh/google_compute_engine \
+   /mnt/c/Users/USUARIO/.ssh/google_compute_engine
+```
+
+### GCP
+
+ - Proyecto: `Nombre del proyecto`
+ - VM: `nombre-de-lav`
+ - IAP habilitado + permisos para la cuenta que se conecta.
+
+## 2. Configuracion de la VM
+
+Archivo: `C:\Users\USUARIO\.ssh\config`
+
+```sshconfig
+Host gcp-dev-iap
+    HostName compute.Numerosoltadoporcomandodryrun
+    User USUARIO
+
+    IdentityFile C:/Users/USUARIO/.ssh/google_compute_engine
+    IdentitiesOnly yes
+
+    # Túnel IAP usando gcloud en WSL
+    ProxyCommand wsl /home/USUARIO/google-cloud-sdk/platform/bundledpythonunix/bin/python3 /home/USUARIO/google-cloud-sdk/lib/gcloud.py compute start-iap-tunnel nombre-de-la-vm %p --listen-on-stdin --project=nombre-del-proyecto --zone=zona-ubicada-de-la-VM --verbosity=warning
+
+    # Túneles HTTP locales
+    LocalForward 8080 localhost:80      # Nginx / web
+    LocalForward 9090 localhost:9090    # Prometheus
+    LocalForward 3000 localhost:3000    # Grafana
+```
+> - HostName compute.NUMEROLARGO sale de
+>   - gcloud compute ssh nombre-de-la-VM --tunnel-through-iap --dry-run.
+
+## 3. Probar conexión SSH 
+
+En powershell:
+```powershell
+ssh gcp-dev-iap
+```
+
+Si funciona deberías ver:
+```bash
+Usuario@Nombre-de-la-VM:~$
+```
+Y mientras la sesión esté abierta:
+
+- `http://localhost:8080` → Nginx / web
+
+- `http://localhost:9090` → Prometheus
+
+- `http://localhost:3000` → Grafana
+
+## 4. Uso con VS Code Remote-SSH
+
+  1. Abrir VS Code
+  2. `Ctrl+Shift+P`
+  3. Seleccionar `gcp-dev-iap`
+  4. Esperar a que se instale el ***VS Code Server*** en la VM (Primera vez)
+  5. Abajo a la izquierda debe poner: `SSH: gcp-dev-iap`.
+  6. `Terminal -> New Terminal` -> prompt esperado
+  ```bash
+    USUARIO@Nombre-de-la-VM:~$
+   ```
+A partir de ahora: 
+
+  - Se edita archivos directamente en la VM.
+  - Usas la terminal remota para `docker`, logs, ect.
+  - Accedes a los servicios vía `localhost:8080/9090/3000`.
+
+## 5. Notas rápidas
+
+  - Si Remote-SSH se rompe:  
+  en la VM -> `rm -rf ~/.vscode-server` y volver a conectar.
+
+  - Asegúremonos de tener `curl/wget` instalados en la VM para que VS Code pueda descargar el server:
+  ```bash
+  sudo apt update
+  sudo apt install -y curl wget
+  ```
+
+Asi queda documentado el patrón: ***VM sin IAP pública + IAP + VS Code + túneles Locales***
+
+
 ## Buenas prácticas que hemos seguido
-* Sin llaves SSH ni 22 público: acceso por OS Login + IAP.
+* Sin llaves SSH ni 22 público: acceso por IAP.
 * Inventario efímero (on-the-fly) y sin IPs (solo FQDN GCE).
 * Concurrencia en el workflow para evitar solapes.
 * Jobs separados para máxima visibilidad (generate → publish → apply).
