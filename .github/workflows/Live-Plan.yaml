@@ -60,7 +60,7 @@ jobs:
         with:
           filters: |
             tf:
-              - 'environments/**'
+              - 'environments/dev/**'
               - '.github/workflows/Live-Plan.yaml'
 
       - name: No relevant changes — skip
@@ -75,19 +75,10 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          # Default seguro
+          # Forzar entorno dev por defecto; opcionalmente se puede sobreescribir vía workflow_dispatch
           ENV="environments/dev"
-
-          # Input manual (workflow_dispatch) tiene prioridad
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
             ENV="environments/${{ inputs.env_dir }}"
-          else
-            # Deducir primer entorno tocado con la base
-            base_ref="${GITHUB_BASE_REF:-main}"
-            changed_env="$(git diff --name-only "origin/${base_ref}" | awk -F/ '/^environments\//{print $1"/"$2}' | sort -u | head -n1 || true)"
-            if [[ -n "$changed_env" ]]; then
-              ENV="$changed_env"
-            fi
           fi
 
           echo "dir=$ENV" >> "$GITHUB_OUTPUT"
