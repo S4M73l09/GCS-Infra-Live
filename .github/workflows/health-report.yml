@@ -5,6 +5,10 @@ on:
     - cron: "0 3 * * *"  # una vez al día a las 03:00 UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   health_check:
     runs-on: ubuntu-latest
@@ -68,7 +72,7 @@ jobs:
             age=$((NOW - created_ts))
             if [ $age -ge $MAX_AGE_SECONDS ]; then
               echo "Deleting artifact $id (created: $created)"
-              gh api -X DELETE /repos/$REPO/actions/artifacts/$id
+              gh api -X DELETE /repos/$REPO/actions/artifacts/$id || echo "Warning: no se pudo borrar el artifact $id (permiso/403)"
             fi
           done
 
