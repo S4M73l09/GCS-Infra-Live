@@ -9,7 +9,7 @@ on:
     branches: ["feat/**"]       # pushes a ramas feat/*
     paths:
       - ".github/workflows/Live-Plan.yaml"
-      - "environments/**"    # Cuando haya cambios en este entorno
+      - "environments/dev/**"    # Cuando haya cambios en este entorno
   workflow_dispatch:
     inputs:
       env_dir:
