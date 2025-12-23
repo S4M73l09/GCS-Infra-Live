@@ -113,6 +113,9 @@ jobs:
           echo "TF=$v"
           case "$v" in 1.9.*) echo "OK";; *) echo "ERROR TF=$v (esperaba 1.9.x)"; exit 1;; esac
 
+      - name: Ensure plugin cache dir exists
+        run: mkdir -p ~/.terraform.d/plugin-cache
+
       - name: Cache Terraform plugins
         uses: actions/cache@v4
         with:
@@ -224,6 +227,9 @@ jobs:
           service_account:          ${{ vars.GCP_SERVICE_ACCOUNT }}
 
       # Re-init porque es otro job (runner limpio)
+      - name: Ensure plugin cache dir exists
+        run: mkdir -p ~/.terraform.d/plugin-cache
+
       - name: Cache Terraform plugins
         uses: actions/cache@v4
         with:
