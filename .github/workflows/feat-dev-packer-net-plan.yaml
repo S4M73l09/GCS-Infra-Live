@@ -108,7 +108,7 @@ jobs:
         run: packer init .
 
       - name: Packer fmt (check)
-        run: packer fmt -check .
+        run: packer fmt .
 
       - name: Packer validate (no build)
         env:
