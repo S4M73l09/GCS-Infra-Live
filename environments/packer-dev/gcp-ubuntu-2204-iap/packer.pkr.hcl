@@ -98,6 +98,7 @@ source "googlecompute" "ubuntu2204_iap_nat" {
 
   # VM temporal SIN IP pública (salida a Internet debe venir por Cloud NAT)
   omit_external_ip = true
+  use_internal_ip  = true
 
   # Red/Subred privadas donde ya tienes Cloud NAT + firewall IAP->22 por tag
   network    = var.network
