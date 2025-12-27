@@ -18,11 +18,11 @@ Both Packer and Terraform use their own SA created in the Bootstrap to separate 
 - [General infrastructure (Terraform)](#general-infrastructure-terraform)
   - [Goal](#goal)
   - [Minimal structure](#minimal-structure)
-  - [Actions Variables (repo → Settings → Actions → Variables)](#actions-variables-repo-settings-actions-variables)
+  - [Actions Variables (repo → Settings → Actions → Variables)](#actions-variables-repo--settings--actions--variables)
   - [Terraform (subject to change)](#terraform-subject-to-change)
   - [Requirements in GCP](#requirements-in-gcp)
   - [CI/CD for the `feat/dev` branch](#ci-cd-for-the-feat-dev-branch)
-  - [✅ TFLint in this repo (Terraform lint)](#tflint-in-this-repo-terraform-lint)  
+  - [✅ TFLint in this repo (Terraform lint)](#tflint-in-this-repo-terraform-lint)
   - [Automating plugin updates (optional)](#automating-plugin-updates-optional)
   - [Workflows](#workflows)
   - [Workflow demo video](#workflow-demo-video)
@@ -33,8 +33,11 @@ Both Packer and Terraform use their own SA created in the Bootstrap to separate 
 ---
 # Infrastructure and Packer image
 
+<a id="packer-image-and-workflows"></a>
 ## Packer image and workflows
 
+<a id="packer-ubuntu-2204-iap--k3s-image"></a>
+### Packer (Ubuntu 22.04 IAP + k3s image)
 - **Packer (Ubuntu 22.04 IAP + k3s image)**  
   - `environments/packer-dev/gcp-ubuntu-2204-iap/packer.pkr.hcl`: temp VM without public IP (`omit_external_ip=true`, `use_internal_ip=true`) with IAP SSH; network/subnet via vars.  
   - Explicit SA `service_account_email`; labels on VM and image (`image_labels`), `image_family` and `image_storage_locations` set to region.  
@@ -42,17 +45,23 @@ Both Packer and Terraform use their own SA created in the Bootstrap to separate 
   - Bakes k3s `v1.34.1+k3s1` installed but stopped (`INSTALL_K3S_SKIP_START=true`); base config at `/etc/rancher/k3s/config.yaml` (traefik/servicelb disabled, flannel vxlan, CIDRs 10.42/10.43, kubeconfig 0644, `node-name: k3s-server-1`). Token **not** baked: generated at runtime when starting the server.  
   - IAP connection: uses `iap-ssh` firewall tag and `packer-dev` tag; ephemeral VM without public IP.
 
+<a id="github-actions-workflow-feat-dev-packer-net-plan"></a>
+### GitHub Actions workflow (feat-dev-packer-net-plan)
 - **GitHub Actions workflow (feat-dev-packer-net-plan)**  
   - Paths: `environments/packer-dev/**`, branch `feat/dev`. Concurrency enabled.  
   - Terraform job (plan only) in `environments/packer-dev/terraform-net`, OIDC with `GCP_SERVICE_ACCOUNT`, no apply.  
   - Packer job (validate only) depends on plan; OIDC with `GCP_PACKER_SERVICE`; passes `PKR_VAR_*` and `PKR_VAR_service_account_email`.  
   - `packer fmt` formats (no `-check`) to avoid style failures; `packer validate` only (no build).
 
+<a id="terraform-network-for-packer-dev"></a>
+### Terraform network for packer-dev
 - **Terraform network for packer-dev**  
   - `environments/packer-dev/terraform-net`: dedicated VPC, private subnet, Cloud Router + NAT, firewall IAP→SSH via `iap-ssh` tag.  
   - Outputs: names plus `network_self_link`/`subnetwork_self_link` for downstream modules.  
   - Vars for project/region/vpc/subnet/cidr/tag; assumes same project for network and compute.
 
+<a id="quick-k3s-notes"></a>
+### Quick k3s notes
 - **Quick k3s notes**  
   - k3s is installed and stopped; when starting the server it generates the token at `/var/lib/rancher/k3s/server/token` (or export `K3S_TOKEN` at runtime).  
   - Server/agent start happens at runtime (cloud-init/script). No default ingress/LB (traefik/servicelb disabled).
@@ -91,8 +100,10 @@ All this works thanks to the Bootstrap project which has what is necessary to ex
 
 # General infrastructure
 
+<a id="general-infrastructure-terraform"></a>
 ## General infrastructure (Terraform)
 
+<a id="goal"></a>
 ### 🎯 Goal  
 
 * Deploy real infrastructure in GCP for the `dev` environment using:  
@@ -101,6 +112,7 @@ All this works thanks to the Bootstrap project which has what is necessary to ex
   * Plan in PR (no apply) + manual Apply that downloads the plan from the PR and applies it exactly.
 * Optionally keep `main` clean: the apply does **not** require `main` to have the same `.tf` files.
 
+<a id="minimal-structure"></a>
 ### 🧱 Minimal structure
 ```bash
 live-infra/  
@@ -126,6 +138,7 @@ live-infra/
 ```  
 + > **Note:** The *apply* workflow (**`apply.yml`**) lives in the **`main` branch** and is run manually (*workflow_dispatch*). Even though the file is in `main`, it applies **exactly the plan** generated in the `feat/dev` PR because it **checks out the PR commit** and **downloads the `tfplan.bin` artifact** from that run.
 
+<a id="actions-variables-repo--settings--actions--variables"></a>
 ### 🔐 Actions Variables (repo → Settings → Actions → Variables)
 
 * GCP_WORKLOAD_IDENTITY_PROVIDER  
@@ -136,6 +149,7 @@ live-infra/
 
 These come from the Bootstrap project. They are not secrets (stored as **Variables**, not **Secrets**).
 
+<a id="terraform-subject-to-change"></a>
 ### Terraform (subject to change)
 
 ***backend.tf***
@@ -213,6 +227,7 @@ terraform providers lock   -platform=linux_amd64   -platform=linux_arm64   -plat
 
 ***A note:*** Google does not support Windows ARM as of the date this is published. This may change in the future.
 
+<a id="requirements-in-gcp"></a>
 ### ☁️ Requirements in GCP
 
 * LIVE project: `gcloud-live-dev` with billing enabled.
@@ -225,6 +240,7 @@ terraform providers lock   -platform=linux_amd64   -platform=linux_arm64   -plat
 * State bucket: `PROJECT_NAME-tfstate` with conditional binding by prefix:
   * Condition: **`resource.name.startsWith('projects/_/buckets/state_name_Bootstrap/objects/live/dev/')`**
 
+<a id="ci-cd-for-the-featdev-branch"></a>
 ### 🔄 CI/CD for the `feat/dev` branch
 
 ### 2) Manual Apply from the PR plan (**workflow defined in `main`**)
@@ -242,6 +258,7 @@ terraform providers lock   -platform=linux_amd64   -platform=linux_arm64   -plat
 - The **test branch (`feat/dev`)** contains the Terraform code and the **`plan.yml`** that generates the plan and the artifacts.
 - The **`main` branch** contains **`apply.yml`**. When executed manually, it **does not require a merge**: it takes the **plan from the PR** and the **exact code from the PR commit**, allowing you to keep `main` clean.
 
+<a id="tflint-in-this-repo-terraform-lint"></a>
 ### ✅ TFLint in this repo (Terraform lint)
 
 To improve security and detect Terraform issues early in the different files, a `.tflint` setup was added.
@@ -363,6 +380,7 @@ principalSet://iam.googleapis.com/projects/<BOOTSTRAP_PROJECT_NUMBER>/locations/
      * Provider pins: `google`/`google-beta ~> 5.45`.
      * `terraform init -lockfile=readonly`.
 
+<a id="automating-plugin-updates-optional"></a>
 ### Automating plugin updates (optional)
 
 A Renovate App was added with `Renovate.json` in `main` to open PRs that update the line:
@@ -372,6 +390,7 @@ version = "X.Y.Z"
 in `tflint.hcl` files.  
 Configured to target the `feat/dev` branch in ***Scan and Alert*** mode.
 
+<a id="workflows-1"></a>
 ### Workflows
 
 1) **`Live-Plan.yaml`** (`feat/dev` branch)
@@ -394,6 +413,7 @@ Configured to target the `feat/dev` branch in ***Scan and Alert*** mode.
   * Does: resolves PR SHA -> downloads the artifact from the last successful plan -> **`checkout`** of that exact commit -> **`init`** -> **`apply tfplan.bin`**.
   * Environment: **`dev`** with *Required reviewers* (approval before applying).
 
+<a id="workflow-demo-video"></a>
 ### Workflow demo video
 
 <video src="https://github.com/user-attachments/assets/27e975c5-c57c-48c8-925e-55249caee128" controls style="max-width: 100%; height: auto;"> Workflow demo video </video>
@@ -408,6 +428,7 @@ Image showing complete diagram + artifacts
   />
 </p>
 
+<a id="current-status-featdev"></a>
 ### ✅ Current status (feat/dev)
 
   * `GCS backend` working (`live/dev`) ✔  
