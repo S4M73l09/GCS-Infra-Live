@@ -4,7 +4,7 @@
 
 - [Infra usando y horneando imagen Packer.](#infra-usando-y-horneando-imagen-packer)
 - [Infra Apply + Ansible (post-apply) en rama main](#infra-apply--ansible-post-apply-en-rama-main)
-  - [Estado de salud del entorno](#estado-de-salud-del-entorno)
+  - [Estado de salud del entorno](#Estado-de-salud-del-entorno)
   - [Qué se añadió](#qué-se-añadió)
   - [Requisitos](#requisitos)
   - [Estructura recomendada del repositorio (En proceso)](#estructura-recomendada-del-repositorio-en-proceso)
@@ -12,7 +12,7 @@
   - [Estructura de carpetas en la VM](#estructura-de-carpetas-en-la-vm)
   - [Stack desplegado](#stack-desplegado)
   - [Ansible site.yml](#ansible-siteyml)
-  - [Stack Docker: docker-compose.yml](#stack-docker-docker-compose-yml)
+  - [Stack Docker: docker-compose.yml](#Stack-Docker-docker-compose-yml)
   - [Conexion a la VM usando IAP y VS Code o cualquier otra herramienta.](#conexion-a-la-vm-usando-iap-y-vs-code-o-cualquier-otra-herramienta)
   - [Buenas prácticas que hemos seguido](#buenas-prácticas-que-hemos-seguido)
 <!-- tocstop -->
