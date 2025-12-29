@@ -6,6 +6,11 @@ variable "region" {
   type = string
 }
 
+variable "zone" {
+  type    = string
+  default = "europe-west1-b"
+}
+
 variable "vpc_name" {
   type    = string
   default = "vpc-dev"
@@ -24,4 +29,18 @@ variable "subnet_cidr" {
 variable "iap_ssh_tag" {
   type    = string
   default = "iap-ssh"
+}
+
+variable "vm_name" {
+  type    = string
+  default = "k3s-server-1"
+}
+
+variable "vm_machine_type" {
+  type    = string
+  default = "e2-medium"
+}
+
+variable "vm_service_account" {
+  type = string
 }

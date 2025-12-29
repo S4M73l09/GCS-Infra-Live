@@ -14,6 +14,11 @@ provider "google" {
   region  = var.region
 }
 
+locals {
+  # Ruta de la familia de imagen horneada por Packer (mismo proyecto)
+  packer_image_family = "projects/${var.project_id}/global/images/family/ubuntu-2204-iap-family"
+}
+
 # VPC dedicada (no default)
 resource "google_compute_network" "vpc" {
   name                    = var.vpc_name
@@ -70,4 +75,33 @@ resource "google_compute_firewall" "allow_ssh_from_iap" {
   }
 
   target_tags = [var.iap_ssh_tag]
+}
+
+# VM basada en la imagen horneada por Packer (sin IP pública, acceso por IAP/OS Login)
+resource "google_compute_instance" "k3s_server" {
+  name         = var.vm_name
+  machine_type = var.vm_machine_type
+  zone         = var.zone
+
+  boot_disk {
+    initialize_params {
+      image = local.packer_image_family
+    }
+  }
+
+  network_interface {
+    subnetwork = google_compute_subnetwork.private.self_link
+    # Sin IP pública
+  }
+
+  tags = [var.iap_ssh_tag]
+
+  service_account {
+    email  = var.vm_service_account
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
+  metadata = {
+    enable-oslogin = "FALSE"
+  }
 }

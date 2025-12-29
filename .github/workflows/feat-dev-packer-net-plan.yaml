@@ -64,10 +64,12 @@ jobs:
       - name: Terraform plan (no apply)
         env:
           TF_VAR_project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
-          TF_VAR_region:     ${{ vars.GCP_INFRA_REGION }}
+          TF_VAR_region: ${{ vars.GCP_INFRA_REGION }}
+          TF_VAR_zone: ${{ vars.GCP_INFRA_ZONE }}
           # Si también pasas vpc/subnet/cidr por variables del repo, añade aquí:
-          TF_VAR_vpc_name:     ${{ vars.GCP_INFRA_NETWORK }}
-          TF_VAR_subnet_name:  ${{ vars.GCP_INFRA_SUBNETWORK }}
+          TF_VAR_vpc_name: ${{ vars.GCP_INFRA_NETWORK }}
+          TF_VAR_subnet_name: ${{ vars.GCP_INFRA_SUBNETWORK }}
+          TF_VAR_vm_service_account: ${{ vars.GCP_VM_SERVICE_ACCOUNT }}
           # TF_VAR_subnet_cidr: ${{ vars.GCP_INFRA_SUBNET_CIDR }}
           # TF_VAR_iap_ssh_tag:  ${{ vars.GCP_INFRA_IAP_SSH_TAG }}
         run: terraform plan -no-color
