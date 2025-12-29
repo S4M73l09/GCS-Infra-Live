@@ -1,0 +1,224 @@
+---
+name: main-packer-dev
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - environments/packer-dev/**
+      - .github/workflows/main-packer-dev.yaml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - environments/packer-dev/**
+      - .github/workflows/main-packer-dev.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: packer-net-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-net-plan:
+    name: Terraform plan (packer networking)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    needs: packer-validate-built
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: environments/packer-dev/terraform-net
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Si tu repo ya tiene auth OIDC a GCP, mete aquí tu bloque existente.
+      # Ejemplo típico (descomentarlo y completar con tu provider/SA):
+      - name: Auth to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform fmt (check)
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan (no apply)
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          TF_VAR_region: ${{ vars.GCP_INFRA_REGION }}
+          # Si también pasas vpc/subnet/cidr por variables del repo, añade aquí:
+          TF_VAR_vpc_name: ${{ vars.GCP_INFRA_NETWORK }}
+          TF_VAR_subnet_name: ${{ vars.GCP_INFRA_SUBNETWORK }}
+          # TF_VAR_subnet_cidr: ${{ vars.GCP_INFRA_SUBNET_CIDR }}
+          # TF_VAR_iap_ssh_tag:  ${{ vars.GCP_INFRA_IAP_SSH_TAG }}
+        run: terraform plan -no-color -out=tfplan.bin
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: |
+            environments/packer-dev/terraform-net/tfplan.bin
+          retention-days: 7
+
+
+  terraform-apply-net:
+    name: Terraform apply (packer networking)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - terraform-net-plan
+      - packer-validate-built
+    permissions:
+      contents: read
+      id-token: write
+    environment: devk3s
+    defaults:
+      run:
+        shell: bash
+        working-directory: environments/packer-dev/terraform-net
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ github.sha }}
+          path: ./plan
+
+      - name: Auth to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform-apply
+        run: terraform apply -input=false -auto-approve ./plan/tfplan.bin
+
+
+  packer-validate-built:
+    name: Packer validate (IAP, built)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: environments/packer-dev/gcp-ubuntu-2204-iap
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+
+      # Igual que arriba: usar auth OIDC real si lo tienes ya.
+      - name: Auth to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PACKER_SERVICE }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Packer
+        uses: hashicorp/setup-packer@v3
+        with:
+          version: "1.11.0"
+
+      - name: Packer init
+        run: packer init .
+
+      - name: Packer fmt (check)
+        run: packer fmt .
+
+      - name: Packer validate
+        env:
+          PKR_VAR_project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          PKR_VAR_region: ${{ vars.GCP_INFRA_REGION }}
+          PKR_VAR_zone: ${{ vars.GCP_INFRA_ZONE }}
+          PKR_VAR_service_account_email: ${{ vars.GCP_PACKER_SERVICE }}
+          PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}
+          PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}
+          # Opcionales si quieres sobreescribir defaults:
+          # PKR_VAR_image_family: "ubuntu-2204-iap-family"
+          # PKR_VAR_iap_ssh_tag:  "iap-ssh"
+        run: packer validate .
+
+      - name: Packer build (IAP, built)
+        env:
+          PKR_VAR_project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          PKR_VAR_region: ${{ vars.GCP_INFRA_REGION }}
+          PKR_VAR_zone: ${{ vars.GCP_INFRA_ZONE }}
+          PKR_VAR_service_account_email: ${{ vars.GCP_PACKER_SERVICE }}
+          PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}
+          PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}
+        run: packer build .
+  Artifact-connect-IAP:
+    name: Artifact connect IAP
+    runs-on: ubuntu-latest
+    needs: terraform-apply-net
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Build IAP SSH command file
+        env:
+          PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          ZONE: ${{ vars.GCP_INFRA_ZONE }}
+        run: |
+          cat > iap-ssh-command.txt <<'EOF'
+          # Se sustituye <INSTANCE_NAME> y <USER> segun la VM.
+          gcloud compute ssh <USER>@<INSTANCE_NAME> \
+            --project ${PROJECT} \
+            --zone ${ZONE} \
+            --tunnel-through-iap \
+            -- -o IdentitiesOnly=yes -o StrictHostKeyChecking=no
+            EOF
+
+      - name: Zip IAP SSH command file
+        run: zip -j iap-ssh-command.zip iap-ssh-command.txt
+
+      - name: Upload IAP SSH command artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iap-ssh-command
+          path: iap-ssh-command.zip
+          retention-days: 4

@@ -1,6 +1,29 @@
 # GCS-Infra-Live ES -> [EN](README.en.md)
 
-## Infra Apply + Ansible (post-apply) en rama main
+<!-- toc -->
+
+- [Infra usando y horneando imagen Packer.](#infra-usando-y-horneando-imagen-packer)
+- [Infra Apply + Ansible (post-apply) en rama main](#infra-apply--ansible-post-apply-en-rama-main)
+  - [Estado de salud del entorno](#estado-de-salud-del-entorno)
+  - [Qué se añadió](#qué-se-añadió)
+  - [Requisitos](#requisitos)
+  - [Estructura recomendada del repositorio (En proceso)](#estructura-recomendada-del-repositorio-en-proceso)
+  - [Cómo funciona el pipeline completo](#cómo-funciona-el-pipeline-completo)
+  - [Estructura de carpetas en la VM](#estructura-de-carpetas-en-la-vm)
+  - [Stack desplegado](#stack-desplegado)
+  - [Ansible site.yml](#ansible-siteyml)
+  - [Stack Docker: docker-compose.yml](#stack-docker-docker-compose-yml)
+  - [Conexion a la VM usando IAP y VS Code o cualquier otra herramienta.](#conexion-a-la-vm-usando-iap-y-vs-code-o-cualquier-otra-herramienta)
+  - [Buenas prácticas que hemos seguido](#buenas-prácticas-que-hemos-seguido)
+<!-- tocstop -->
+
+# Infra usando y horneando imagen Packer.
+
+En esta parte del documento se muestra la estructura y la creacion de recursos usando una plantilla packer y archivos .tf los cuales son generados al hacer un `pull_request` desde la rama de prueba a la Rama `main`. Cabe destacar que la verificacion de `packer`ya se hace en la propia rama de pruebas `feat/dev`.
+
+
+
+# Infra Apply + Ansible (post-apply) en rama main
 
 Este documento resume los cambios realizados en main para ejecutar configuraciones de Ansible de forma segura después del terraform apply, usando `OS Login + IAP` (sin llaves SSH ni puerto 22 público) y un inventario generado `on-the-fly.`
 
@@ -450,6 +473,8 @@ El acceso se hace solo por:
 
 ---
 
+## Conexion a la VM usando IAP y VS Code o cualquier otra herramienta.
+
 ## 1. Requisitos
 
 ### Local (Windows + WSL)
@@ -558,4 +583,3 @@ Asi queda documentado el patrón: ***VM sin IAP pública + IAP + VS Code + túne
 * Inventario efímero (on-the-fly) y sin IPs (solo FQDN GCE).
 * Concurrencia en el workflow para evitar solapes.
 * Jobs separados para máxima visibilidad (generate → publish → apply).
-

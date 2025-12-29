@@ -1,5 +1,28 @@
 # GCS-Infra-Live EN -> [ES](README.md)
 
+<!-- toc -->
+
+- [Infra using and baking Packer image](#infra-using-and-baking-packer-image)
+- [Infra Apply + Ansible (post-apply) on main branch](#infra-apply--ansible-post-apply-on-main-branch)
+  - [Health status of the environment](#-health-status-of-the-environment)
+  - [What was added](#what-was-added)
+  - [Requirements](#requirements)
+  - [Recommended repository structure (In progress)](#recommended-repository-structure-in-progress)
+  - [How the full pipeline works](#how-the-full-pipeline-works)
+  - [Folder structure in the VM](#folder-structure-in-the-vm)
+  - [Deployed stack](#deployed-stack)
+  - [Ansible site.yml](#ansible-siteyml)
+  - [Docker stack: docker-compose.yml](#docker-stack-docker-compose-yml)
+  - [Secure VM Access without Public IP (IAP + VS Code Remote-SSH)](#secure-vm-access-without-public-ip-iap--vs-code-remote-ssh)
+  - [Artifacts and visibility](#artifacts-and-visibility)
+  - [Best practices we follow](#best-practices-we-follow)
+
+<!-- tocstop -->
+
+## Infra using and baking Packer image
+
+This part describes the structure and creation of resources using a Packer template and Terraform files generated when a `pull_request` from the test branch is opened against `main`. Packer validation already runs in the test branch `feat/dev`.
+
 ## Infra Apply + Ansible (post-apply) on main branch
 
 This document summarizes the changes made on `main` to safely run Ansible configurations after `terraform apply`, using `OS Login + IAP` (no SSH keys and no public port 22) and an inventory generated *on-the-fly*.
@@ -158,12 +181,6 @@ renovate.json
 * `grafana` (with Prometheus datasource preconfigured)
 
 * Basic alert rules + host health
-
-* Alerts sent by email via Alertmanager
-
-## Ansible site.yml
-
-The playbook in charge of:
 
 1. Install Docker + compose plugin.
 
@@ -592,4 +609,3 @@ the Terraform changes that are already ready for production.
 * Workflow concurrency to avoid overlaps.
 
 * Separate jobs for maximum visibility (generate → publish → apply).
-
