@@ -1,8 +1,12 @@
 # GCS-Infra-Live ES -> [EN](README.en.md)
 
+
+# Indice de contenidos
 <!-- toc -->
 
 - [Infra usando y horneando imagen Packer.](#infra-usando-y-horneando-imagen-packer)
+  - [Workflow Packer + Terraform (feat/dev)](#workflow-packer-terraform-featdev)
+  - [Imagen Packer horneada con k3s](#imagen-packer-horneada-con-k3s)
 - [Infra Apply + Ansible (post-apply) en rama main](#infra-apply--ansible-post-apply-en-rama-main)
   - [Estado de salud del entorno](#Estado-de-salud-del-entorno)
   - [Qué se añadió](#qué-se-añadió)
@@ -21,7 +25,21 @@
 
 En esta parte del documento se muestra la estructura y la creacion de recursos usando una plantilla packer y archivos .tf los cuales son generados al hacer un `pull_request` desde la rama de prueba a la Rama `main`. Cabe destacar que la verificacion de `packer`ya se hace en la propia rama de pruebas `feat/dev`.
 
+## Workflow Packer + Terraform (feat/dev)
+- Workflow: `.github/workflows/feat-dev-packer-net-plan.yaml`.
+- Orden: Packer (init/fmt/validate) → Terraform (fmt/init/validate/plan) en `environments/packer-dev/terraform-net` (VPC, subred privada, NAT, firewall IAP y VM sin IP pública basada en la imagen de Packer).
+- Imagen: familia `ubuntu-2204-iap-family` publicada por Packer en el proyecto `TF_VAR_project_id`.
+- Variables: `GCP_INFRA_PROJECT_ID/REGION/ZONE/NETWORK/SUBNETWORK`, `GCP_VM_SERVICE_ACCOUNT` y SA de Packer (`GCP_PACKER_SERVICE`) se pasan como variables del repo.
+- Apply final: se hace en el workflow de `main` (manual y con entorno protegido); en feat/dev solo se valida plan y Packer.
 
+## Imagen Packer horneada con k3s
+- Base: Ubuntu 22.04, sin IP pública, acceso por IAP, tags `iap-ssh`/`packer-dev`.
+- K3s `v1.34.1+k3s1` instalado pero detenido (`INSTALL_K3S_SKIP_START=true`); config base en `/etc/rancher/k3s/config.yaml` (traefik/servicelb desactivados, flannel vxlan, CIDRs 10.42/10.43, `node-name: k3s-server-1`, kubeconfig 0644).
+- Token **no** embebido: se genera en runtime al arrancar el server.
+- Paquetes pinneados y hold (`curl`, `git`, `ca-certificates`, `jq`); caché APT limpia; imagen publicada en la familia `ubuntu-2204-iap-family`.
+- Autenticación: Packer utiliza una `SA`diferente que la de `Terraform`para separar, tambien usa `IAP` + `firewall` para limitar el acceso.
+- OS Login ahora mismo esta en `false`, pero mas adelante se puede activar sin problemas.
+- Para consumir la imagen se indica la familia de esta `local.packer_image_family` se usa en `boot_disk`, si la imagen su publica en otro proyecto, se necesitaria cambiar el `project` en la misma ruta.
 
 # Infra Apply + Ansible (post-apply) en rama main
 
