@@ -128,6 +128,24 @@ jobs:
       - name: Terraform-apply
         run: terraform apply -input=false -auto-approve ./plan/tfplan.bin
 
+      - name: Export VM outputs
+        id: export_vm
+        run: |
+          VM_NAME=$(terraform output -raw vm_name)
+          VM_IP=$(terraform output -raw vm_internal_ip)
+          echo "vm_name=$VM_NAME" >> "$GITHUB_OUTPUT"
+          echo "vm_ip=$VM_IP" >> "$GITHUB_OUTPUT"
+
+      - name: Save Terraform outputs
+        run: terraform output -json > tfoutputs.json
+
+      - name: Upload TF outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfoutputs-${{ github.sha }}
+          path: tfoutputs.json
+          retention-days: 7
+
 
   packer-validate-built:
     name: Packer validate (IAP, built)
@@ -189,6 +207,78 @@ jobs:
           PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}
           PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}
         run: packer build .
+
+  cilium-installer:
+    name: Cilium installer
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+      - terraform-apply-net
+      - packer-validate-built
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Auth to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+      
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup helm
+        uses: azure/setup-helm@v4
+
+      - name: Download TF outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: tfoutputs-${{ github.sha }}
+          path: ./tfoutputs
+
+      - name: Export VM info
+        run: |
+          VM_NAME=$(jq -r '.vm_name.value' ./tfoutputs/tfoutputs.json)
+          echo "GCP_VM_NAME=${VM_NAME}" >> $GITHUB_ENV
+          VM_IP=$(jq -r '.vm_internal_ip.value' ./tfoutputs/tfoutputs.json)
+          echo "GCP_VM_IP=${VM_IP}" >> $GITHUB_ENV
+
+      - name: Fetch k3s kubeconfig via IAP
+        env:
+          PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          ZONE: ${{ vars.GCP_INFRA_ZONE }}
+          VM_NAME: ${{ env.GCP_VM_NAME }}
+          SSH_USER: ${{ vars.GCP_VM_SSH_USER }}
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "$VM_NAME" \
+            --tunnel-through-iap \
+            --project "${PROJECT}" \
+            --zone "${ZONE}" \
+            --command "sudo cat /etc/rancher/k3s/k3s.yaml" \
+            --impersonate-service-account="${{ vars.GCP_SERVICE_ACCOUNT }}" \
+            > k3s.yaml
+          INTERNAL_IP=$(gcloud compute instances describe "${VM_NAME}" --project "${PROJECT}" --zone "${ZONE}" --format='get(networkInterfaces[0].networkIP)')
+          sed -i "s/127.0.0.1/${INTERNAL_IP}/g" k3s.yaml
+          echo "KUBECONFIG=$(pwd)/k3s.yaml" >> $GITHUB_ENV
+
+      - name: Install cilium
+        env:
+          KUBECONFIG: ${{ env.KUBECONFIG }}
+        run: |
+          set -euo pipefail
+          helm repo add cilium https://helm.cilium.io
+          helm repo update
+          API_HOST=$(grep server: "$KUBECONFIG" | head -1 | awk '{print $2}' | sed 's#https://##' | cut -d: -f1)
+          helm install cilium cilium/cilium \
+            --namespace kube-system \
+            --set kubeProxyReplacement=strict \
+            --set k8sServiceHost="${API_HOST}" \
+            --set k8sServicePort=6443
+
+
   Artifact-connect-IAP:
     name: Artifact connect IAP
     runs-on: ubuntu-latest
