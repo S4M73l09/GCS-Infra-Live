@@ -6,6 +6,11 @@ variable "region" {
   type = string
 }
 
+variable "packer_image_family" {
+  type = string
+  default = "ubuntu-2204-iap-family"
+}
+
 variable "zone" {
   type    = string
   default = "europe-west1-b"

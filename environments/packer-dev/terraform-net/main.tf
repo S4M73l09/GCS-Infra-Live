@@ -16,7 +16,7 @@ provider "google" {
 
 locals {
   # Ruta de la familia de imagen horneada por Packer (mismo proyecto)
-  packer_image_family = "projects/${var.project_id}/global/images/family/ubuntu-2204-iap-family"
+  packer_image_family = "projects/${var.project_id}/global/images/family/${var.packer_image_family}"
 }
 
 # VPC dedicada (no default)
@@ -102,6 +102,6 @@ resource "google_compute_instance" "k3s_server" {
   }
 
   metadata = {
-    enable-oslogin = "FALSE"
+    enable-oslogin = "TRUE"
   }
 }
