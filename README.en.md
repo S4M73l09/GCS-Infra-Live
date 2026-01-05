@@ -27,6 +27,8 @@
 
 This part describes the structure and creation of resources using a Packer template and Terraform files generated when a `pull_request` from the test branch is opened against `main`. Packer validation already runs in the test branch `feat/dev`.
 
+The infrastructure used through the packer is only for learning and knowledge purposes; due to the complexity of this part of the project, it will be improved and continued little by little.
+
 ## Packer + Terraform workflow (feat/dev)
 - Workflow: `.github/workflows/feat-dev-packer-net-plan.yaml`.
 - Order: Packer (init/fmt/validate) → Terraform (fmt/init/validate/plan) in `environments/packer-dev/terraform-net` (VPC, private subnet, NAT, IAP firewall, and VM without public IP based on the Packer image).

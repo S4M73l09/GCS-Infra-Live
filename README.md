@@ -25,6 +25,8 @@
 
 En esta parte del documento se muestra la estructura y la creacion de recursos usando una plantilla packer y archivos .tf los cuales son generados al hacer un `pull_request` desde la rama de prueba a la Rama `main`. Cabe destacar que la verificacion de `packer`ya se hace en la propia rama de pruebas `feat/dev`.
 
+La infraestructura usada a traves del packer es solo como aprendizaje y conocimiento, debido a la complejidad de dicha parte del proyecto, se mejorara y se seguira poco a poco.
+
 ## Workflow Packer + Terraform (feat/dev)
 - Workflow: `.github/workflows/feat-dev-packer-net-plan.yaml`.
 - Orden: Packer (init/fmt/validate) → Terraform (fmt/init/validate/plan) en `environments/packer-dev/terraform-net` (VPC, subred privada, NAT, firewall IAP y VM sin IP pública basada en la imagen de Packer).
