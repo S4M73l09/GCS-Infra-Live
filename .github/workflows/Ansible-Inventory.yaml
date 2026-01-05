@@ -61,6 +61,9 @@ jobs:
     name: Generate inventory
     needs: resolve-env
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     container:
       image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:2e69b9c7691dfd26236c033bbcbcff78f4bc99bb327a41670f0f11f2b74aa76e # 472.0.0 Manifiesto Digest para estabilidad
     steps:
@@ -358,6 +361,9 @@ jobs:
     name: Run Ansible
     needs: [resolve-env, generate_inventory]
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     container:
       image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:2e69b9c7691dfd26236c033bbcbcff78f4bc99bb327a41670f0f11f2b74aa76e # 472.0.0 Manifiesto Digest para estabilidad
     steps:
