@@ -399,6 +399,21 @@ The Ansible step in the workflow passes these secrets to the playbook as `-e` va
 
 In each run of the `Ansible` workflow at the end of everything, a artifact is generated that can be downloaded from which you can connect to the VM using its real name and other ways using `IAP-Tunnel`.
 
+## Main branch infrastructure demo
+
+### Terraform workflow demo
+
+<video src="https://github.com/user-attachments/assets/bc6c77b1-89ce-4a6a-8a26-95e66cca89ec" controls muted playsinline style="max-width: 100%;"></video>
+
+### Ansible workflow demo
+
+<video src="https://github.com/user-attachments/assets/94ba4a33-5c7f-40f6-8cdd-ae9ee04fd263" controls muted playsinline style= "max-width: 100%;"></video>
+
+### Full docker compose snapshot
+
+Here we show the Docker container.  
+<img width="1059" height="104" alt="Image" src="https://github.com/user-attachments/assets/f4c325c2-a145-4dfc-9da4-9855264f2d47"></img>
+
 ## Secure VM Access without Public IP (IAP + VS Code Remote-SSH)
 
 This VM (`dev-oslogin-ubuntu`, `europe-west1-b`) has **no public IP**.  

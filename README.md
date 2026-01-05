@@ -493,6 +493,25 @@ El acceso se hace solo por:
 
 ---
 
+## Demostracion de Infraestructura de Rama main
+
+### Demostracion de Workflow de Terraform
+
+ <video src="https://github.com/user-attachments/assets/bc6c77b1-89ce-4a6a-8a26-95e66cca89ec" controls muted playsinline style="max-width: 100%;"></video>
+
+### Demostracion de Workflow de Ansible
+
+<video src="https://github.com/user-attachments/assets/94ba4a33-5c7f-40f6-8cdd-ae9ee04fd263" controls muted playsinline style= "max-width: 100%;"></video>
+
+### Captura de todo el docker compose
+
+Aqui se muestra el contenedor Docker.  
+<img width="1059" height="104" alt="Image" src="https://github.com/user-attachments/assets/f4c325c2-a145-4dfc-9da4-9855264f2d47"/>
+
+
+
+
+
 ## Conexion a la VM usando IAP y VS Code o cualquier otra herramienta.
 
 ## 1. Requisitos
