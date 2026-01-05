@@ -438,8 +438,8 @@ jobs:
 
       - name: Install Ansible
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y ansible
+          apt-get update -y
+          apt-get install -y ansible
 
       - name: Cache Ansible collections and pip
         uses: actions/cache@v4
