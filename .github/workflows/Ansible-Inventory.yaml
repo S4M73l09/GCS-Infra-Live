@@ -439,7 +439,8 @@ jobs:
       - name: Install Ansible
         run: |
           apt-get update -y
-          apt-get install -y ansible
+          apt-get install -y python3-pip
+          python3 -m pip install --no-cache-dir "ansible==12.3.0"
 
       - name: Cache Ansible collections and pip
         uses: actions/cache@v4
