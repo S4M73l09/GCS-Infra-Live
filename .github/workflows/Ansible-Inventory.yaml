@@ -62,7 +62,7 @@ jobs:
     needs: resolve-env
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/googlecloudplatform/cloud-sdk:latest
+      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:78bb90ff82582c8485aaca28af52fb8fe9400b5687d4cc0a94727d874cce01b7 # 472.0.0 digest para estabilidad
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -359,7 +359,7 @@ jobs:
     needs: [resolve-env, generate_inventory]
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/googlecloudplatform/cloud-sdk:latest
+      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:78bb90ff82582c8485aaca28af52fb8fe9400b5687d4cc0a94727d874cce01b7 # 472.0.0 digest para estabilidad
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
