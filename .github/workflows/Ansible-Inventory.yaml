@@ -105,13 +105,15 @@ jobs:
           # List all instances for the environment, filter for TERMINATED ones
           STOPPED_INSTANCES=$(gcloud compute instances list \
             --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND (status=TERMINATED OR status=STOPPED OR status=SUSPENDED)" \
-            --format="value(name,zone)")
+            --format="value(name,zone.basename())")
 
           if [ -z "$STOPPED_INSTANCES" ]; then
             echo "No stopped instances found for environment: ${{ needs.resolve-env.outputs.env }}"
           else
             echo "Found stopped instances. Attempting to start them:"
-            echo "$STOPPED_INSTANCES" | while IFS= read -r INSTANCE_NAME INSTANCE_ZONE; do
+            echo "$STOPPED_INSTANCES" | while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
+              INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+              INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
               echo "Starting instance: $INSTANCE_NAME in zone: $INSTANCE_ZONE"
               gcloud compute instances start "$INSTANCE_NAME" --zone="$INSTANCE_ZONE" --quiet
             done
