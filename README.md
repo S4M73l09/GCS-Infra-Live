@@ -503,6 +503,20 @@ El acceso se hace solo por:
 
 <video src="https://github.com/user-attachments/assets/94ba4a33-5c7f-40f6-8cdd-ae9ee04fd263" controls muted playsinline style= "max-width: 100%;"></video>
 
+#### Debido a las modificaciones de la Imagen usada en el workflow, tuve que cambiarla, y añadir diferentes mejorar al workflow para tener una estabilidad y control de versiones correctas.
+
+- `manifest unknown` al tirar de `ghcr.io/googlecloudplatform/cloud-sdk:latest` -> cambie a imagen válida en `gcr.io`y ademas he fijado su digest.
+- Digest incorrecto (config digest) -> reemplazo por `manifest digest` válido.
+- `set: Illegal option -o pipefail`-> se fuerza a usar `shell: bash`en los jobs.
+- `sudo: command not found`error debido al cambio de imagen del contenedor -> quitamos sudo.
+- Error de compatibilidad: `community.docker`vs Ansible 2.10 -> Se sube la version de Ansible/ansible-core.
+- `No matching distribution found for ansible==12.3.0`-> esa versión no existe en PyPI.
+- `No matching distribution found for ansible-core==2.17.*` -> Python demasiado viejo en la imagen; se cambia a una nueva.
+- `ERROR: externally-managed-environment` (PEP 668) -> instalados Ansible en un venv.
+- `Could not parse resource []` al arrancar VMs -> corregimos parsing de `name/zone` con `zone.basename()` + `IFS=$'\t'`.
+
+Esta serie de errores y modificaciones se dieron por el cambio de imagen del contenedor, ahora el workflow esta mas estructurado y mas dinamico.
+
 ### Captura de todo el docker compose
 
 Aqui se muestra el contenedor Docker.  

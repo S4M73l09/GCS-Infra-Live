@@ -409,6 +409,20 @@ In each run of the `Ansible` workflow at the end of everything, a artifact is ge
 
 <video src="https://github.com/user-attachments/assets/94ba4a33-5c7f-40f6-8cdd-ae9ee04fd263" controls muted playsinline style= "max-width: 100%;"></video>
 
+#### Due to changes in the image used by the workflow, I had to switch it and add several improvements to keep stability and correct version control.
+
+- `manifest unknown` when pulling `ghcr.io/googlecloudplatform/cloud-sdk:latest` -> switched to a valid image in `gcr.io` and pinned its digest.
+- Incorrect digest (config digest) -> replaced with a valid `manifest digest`.
+- `set: Illegal option -o pipefail` -> force `shell: bash` in the jobs.
+- `sudo: command not found` due to the container image change -> removed sudo.
+- Compatibility error: `community.docker` vs Ansible 2.10 -> upgraded Ansible/ansible-core.
+- `No matching distribution found for ansible==12.3.0` -> that version does not exist on PyPI.
+- `No matching distribution found for ansible-core==2.17.*` -> Python too old in the image; switched to a newer image.
+- `ERROR: externally-managed-environment` (PEP 668) -> installed Ansible in a venv.
+- `Could not parse resource []` when starting VMs -> fixed parsing of `name/zone` with `zone.basename()` + `IFS=$'\t'`.
+
+This series of errors and changes happened because of the container image switch; now the workflow is more structured and dynamic.
+
 ### Full docker compose snapshot
 
 Here we show the Docker container.  
