@@ -441,8 +441,10 @@ jobs:
       - name: Install Ansible
         run: |
           apt-get update -y
-          apt-get install -y python3-pip
-          python3 -m pip install --no-cache-dir "ansible-core==2.17.*"
+          apt-get install -y python3-venv
+          python3 -m venv /opt/ansible-venv
+          /opt/ansible-venv/bin/python -m pip install --no-cache-dir "ansible-core==2.17.*"
+          echo "/opt/ansible-venv/bin" >> "$GITHUB_PATH"
 
       - name: Cache Ansible collections and pip
         uses: actions/cache@v4
