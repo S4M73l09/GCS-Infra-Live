@@ -65,7 +65,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:2e69b9c7691dfd26236c033bbcbcff78f4bc99bb327a41670f0f11f2b74aa76e # 472.0.0 Manifiesto Digest para estabilidad
+      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5 # Digest del manifiesto de la versión 550.0.0
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -365,7 +365,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:2e69b9c7691dfd26236c033bbcbcff78f4bc99bb327a41670f0f11f2b74aa76e # 472.0.0 Manifiesto Digest para estabilidad
+      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5 # Manifiesto digest de la versión 550.0.0
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
