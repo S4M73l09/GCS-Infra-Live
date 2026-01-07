@@ -2,7 +2,7 @@ name: terraform-apply
 
 on:
   push:
-    branches: ["main"]
+    branches: ["staging"]
     paths:
       - "environments/**"
       - "modules/**"
@@ -15,7 +15,7 @@ on:
       env_dir:
         description: 'Environment to apply (folder under environments/)'
         required: false
-        default: 'dev'
+        default: 'staging'
       force_apply:
         description: 'Force Terraform plan/apply even if no tracked files changed'
         required: false
@@ -69,6 +69,13 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
             ENV="environments/${{ inputs.env_dir }}"
           else
+            # Auto-detect por rama (staging/main)
+            if [[ "${{ github.ref_name }}" == "staging" ]]; then
+              ENV="environments/staging"
+            elif [[ "${{ github.ref_name }}" == "main" ]]; then
+              ENV="environments/dev"
+            fi
+
             # Deducir primer entorno tocado respecto a main (no crítico, pero ayuda)
             changed_env="$(git diff --name-only "origin/main~1" "origin/main" 2>/dev/null \
               | awk -F/ '/^environments\//{print $1"/"$2}' | sort -u | head -n1 || true)"

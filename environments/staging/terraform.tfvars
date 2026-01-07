@@ -14,7 +14,7 @@ enable_oslogin_2fa     = false
 block_project_ssh_keys = true
 
 # VM
-vm_name          = "dev-oslogin-ubuntu"
+vm_name          = "staging-oslogin-ubuntu"
 series           = "e2"
 vcpus            = 4
 memory_mb        = 8192 # 8 GB exactos (custom)

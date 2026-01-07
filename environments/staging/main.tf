@@ -66,7 +66,7 @@ resource "google_project_iam_member" "iap" {
 # 4) (Opcional) Firewall para IAP SSH (puerto 22)
 #####################################
 resource "google_compute_firewall" "allow_iap_ssh" {
-  name    = "allow-iap-ssh"
+  name    = "allow-iap-ssh-staging"
   network = "default" # cambia si usas tu VPC
 
   allow {
@@ -81,16 +81,16 @@ resource "google_compute_firewall" "allow_iap_ssh" {
 #####################################
 # 4b) Cloud NAT (salida a Internet sin IP pública)
 #####################################
-resource "google_compute_router" "ubuntudev_router" {
-  name    = "ubuntudev-router"
+resource "google_compute_router" "ubuntu_staging_router" {
+  name    = "ubuntu-staging-router"
   network = "projects/${var.project_id}/global/networks/default"
   region  = var.region
 }
 
-resource "google_compute_router_nat" "ubuntudev_nat" {
-  name                               = "ubuntudev-nat"
-  router                             = google_compute_router.ubuntudev_router.name
-  region                             = google_compute_router.ubuntudev_router.region
+resource "google_compute_router_nat" "ubuntu_staging_nat" {
+  name                               = "ubuntu-staging-nat"
+  router                             = google_compute_router.ubuntu_staging_router.name
+  region                             = google_compute_router.ubuntu_staging_router.region
   nat_ip_allocate_option             = "AUTO_ONLY"
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
   enable_endpoint_independent_mapping = true
@@ -121,7 +121,7 @@ resource "google_compute_instance" "ubuntu" {
     role    = "demo"
     os      = "ubuntu2204"
     managed = "terraform"
-    env     = "dev"
+    env     = "staging"
   }
 
   # Etiqueta para la regla IAP SSH (si no usas IP pública)

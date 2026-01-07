@@ -1,5 +1,9 @@
 # GCS-Infra-Live ES -> [EN](README.en.md)
 
+> Nota: Esta rama es **staging**. Puede contener cambios y configuraciones de prueba antes de pasar a `main`.
+
+## Version Staging - Probar workflows, configuraciones y demas - separado por entorno
+
 
 # Indice de contenidos
 <!-- toc -->

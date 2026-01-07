@@ -1,5 +1,9 @@
 # GCS-Infra-Live EN -> [ES](README.md)
 
+> Note: This branch is **staging**. It may contain test changes and configuration before reaching `main`.
+
+## Staging version - Test Workflow, configurations, etc.
+
 
 # Index of contents
 <!-- toc -->

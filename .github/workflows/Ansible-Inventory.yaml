@@ -6,10 +6,10 @@ on:
       env:
         description: "Environment label (e.g. dev)"
         required: false
-        default: "dev"
+        default: "staging"
   workflow_run:
     workflows: ["terraform-apply"] # nombre exacto del workflow de apply
-    branches: [main]
+    branches: [staging]
     types: [completed]
 
 permissions:
