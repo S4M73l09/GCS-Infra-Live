@@ -13,33 +13,7 @@ resource "google_project_service" "oslogin" {
 }
 
 #####################################
-# 2) OS LOGIN - METADATOS (seguros con *item*)
-#####################################
-resource "google_compute_project_metadata_item" "enable_oslogin" {
-  project    = var.project_id
-  key        = "enable-oslogin"
-  value      = "TRUE"
-  depends_on = [google_project_service.oslogin]
-}
-
-resource "google_compute_project_metadata_item" "enable_oslogin_2fa" {
-  count      = var.enable_oslogin_2fa ? 1 : 0
-  project    = var.project_id
-  key        = "enable-oslogin-2fa"
-  value      = "TRUE"
-  depends_on = [google_project_service.oslogin]
-}
-
-resource "google_compute_project_metadata_item" "block_project_ssh_keys" {
-  count      = var.block_project_ssh_keys ? 1 : 0
-  project    = var.project_id
-  key        = "block-project-ssh-keys"
-  value      = "FALSE"
-  depends_on = [google_project_service.oslogin]
-}
-
-#####################################
-# 3) IAM para OS Login / OS Admin / IAP
+# 2) IAM para OS Login / OS Admin / IAP
 #####################################
 resource "google_project_iam_member" "oslogin" {
   for_each = toset(var.oslogin_members)
