@@ -97,10 +97,15 @@ jobs:
         run: |
           set -euo pipefail
           : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+
+          
           gcloud compute os-login ssh-keys add \
             --key-file="${ANSIBLE_SSH_KEY_PATH}.pub" \
-            --ttl=1h
+            --ttl=1h \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }}
+
           SSH_USER=$(gcloud compute os-login describe-profile \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }} \
             --format='value(posixAccounts[0].username)')
           if [ -z "$SSH_USER" ]; then
             echo "OS Login user not found in profile" >&2
