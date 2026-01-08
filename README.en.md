@@ -54,6 +54,8 @@ The infrastructure used through the packer is only for learning and knowledge pu
 
 This document summarizes the changes made on `main` to safely run Ansible configurations after `terraform apply`, using `OS Login + IAP` (no SSH keys and no public port 22) and an inventory generated *on-the-fly*.
 
+> Note: In CI we use OS Login with **service account impersonation** to register a temporary SSH key and obtain the correct POSIX user.
+
 ## 🔍 Health status of the environment
 
 [![Health report](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml/badge.svg)](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml)

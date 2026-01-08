@@ -51,6 +51,8 @@ La infraestructura usada a traves del packer es solo como aprendizaje y conocimi
 
 Este documento resume los cambios realizados en main para ejecutar configuraciones de Ansible de forma segura después del terraform apply, usando `OS Login + IAP` (sin llaves SSH ni puerto 22 público) y un inventario generado `on-the-fly.`
 
+> Nota: En CI usamos OS Login con **impersonación de la Service Account** para registrar la key temporal de SSH y obtener el usuario POSIX correcto.
+
 ## 🔍 Estado de salud del entorno
 
 [![Health report](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml/badge.svg)](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml)
