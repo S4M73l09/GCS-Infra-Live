@@ -503,28 +503,68 @@ cp /home/USUARIO/.ssh/google_compute_engine \
  - VM: `nombre-de-lav`
  - IAP habilitado + permisos para la cuenta que se conecta.
 
+### Guía corta para otros usuarios (OS Login + IAP)
+1. Pedir acceso IAM:
+   - `roles/compute.osLogin` (o `roles/compute.osAdminLogin` si necesita sudo).
+   - `roles/iap.tunnelResourceAccessor`.
+2. Registrar su clave en OS Login:
+```bash
+gcloud compute os-login ssh-keys add \
+  --key-file ~/.ssh/id_ed25519.pub \
+  --project gcloud-live-dev
+```
+3. Obtener su usuario POSIX:
+```bash
+gcloud compute os-login describe-profile --project gcloud-live-dev \
+  --format="value(posixAccounts[0].username)"
+```
+4. Usar el usuario POSIX en SSH config.
+
+#### Plantilla SSH (para cada usuario) - Staging y dev
+```sshconfig
+Host gcp-staging-oslogin-ubuntu
+  HostName staging-oslogin-ubuntu
+  User TU_USUARIO_POSIX
+
+  IdentityFile C:/Users/USUARIO/.ssh/google_compute_engine
+  IdentitiesOnly yes
+
+  ProxyCommand wsl /home/USUARIO/google-cloud-sdk/platform/bundledpythonunix/bin/python3 /home/USUARIO/google-cloud-sdk/lib/gcloud.py compute start-iap-tunnel staging-oslogin-ubuntu %p --listen-on-stdin --project=gcloud-live-dev --zone=europe-west1-b --verbosity=warning
+```
+
 ## 2. Configuracion de la VM
 
 Archivo: `C:\Users\USUARIO\.ssh\config`
 
 ```sshconfig
-Host gcp-dev-iap
-    HostName compute.Numerosoltadoporcomandodryrun
-    User USUARIO
+Host gcp-dev-oslogin-ubuntu
+  HostName dev-oslogin-ubuntu
+  User TU_USUARIO_POSIX
 
-    IdentityFile C:/Users/USUARIO/.ssh/google_compute_engine
-    IdentitiesOnly yes
+  IdentityFile C:/Users/USUARIO/.ssh/google_compute_engine
+  IdentitiesOnly yes
 
-    # Túnel IAP usando gcloud en WSL
-    ProxyCommand wsl /home/USUARIO/google-cloud-sdk/platform/bundledpythonunix/bin/python3 /home/USUARIO/google-cloud-sdk/lib/gcloud.py compute start-iap-tunnel nombre-de-la-vm %p --listen-on-stdin --project=nombre-del-proyecto --zone=zona-ubicada-de-la-VM --verbosity=warning
+  # Túnel IAP usando gcloud en WSL
+  ProxyCommand wsl /home/USUARIO/google-cloud-sdk/platform/bundledpythonunix/bin/python3 /home/USUARIO/google-cloud-sdk/lib/gcloud.py compute start-iap-tunnel dev-oslogin-ubuntu %p --listen-on-stdin --project=NOMBRE_PROYECTO --zone=ZONA_VM --verbosity=warning
 
-    # Túneles HTTP locales
-    LocalForward 8080 localhost:80      # Nginx / web
-    LocalForward 9090 localhost:9090    # Prometheus
-    LocalForward 3000 localhost:3000    # Grafana
+  # Túneles HTTP locales
+  LocalForward 8080 localhost:80      # Nginx / web
+  LocalForward 9090 localhost:9090    # Prometheus
+  LocalForward 3000 localhost:3000    # Grafana
+
+Host gcp-staging-oslogin-ubuntu
+  HostName staging-oslogin-ubuntu
+  User TU_USUARIO_POSIX
+
+  IdentityFile C:/Users/USUARIO/.ssh/google_compute_engine
+  IdentitiesOnly yes
+
+  ProxyCommand wsl /home/USUARIO/google-cloud-sdk/platform/bundledpythonunix/bin/python3 /home/USUARIO/google-cloud-sdk/lib/gcloud.py compute start-iap-tunnel staging-oslogin-ubuntu %p --listen-on-stdin --project=NOMBRE_PROYECTO --zone=ZONA_VM --verbosity=warning
+
+  LocalForward 8081 localhost:80
+  LocalForward 9091 localhost:9090
+  LocalForward 3001 localhost:3000
 ```
-> - HostName compute.NUMEROLARGO sale de
->   - gcloud compute ssh nombre-de-la-VM --tunnel-through-iap --dry-run.
 
 ## 3. Probar conexión SSH 
 
