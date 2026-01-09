@@ -9,12 +9,10 @@
   - [Packer image baked with k3s](#packer-image-baked-with-k3s)
 - [Infra Apply + Ansible (post-apply) on main branch](#infra-apply--ansible-post-apply-on-main-branch)
   - [Health status of the environment](#-health-status-of-the-environment)
+  - [Summary of what was done](#summary-of-what-was-done)
   - [What was added](#what-was-added)
   - [Requirements](#requirements)
-  - [Recommended repository structure (In progress)](#recommended-repository-structure-in-progress)
-  - [How the full pipeline works](#how-the-full-pipeline-works)
   - [Folder structure in the VM](#folder-structure-in-the-vm)
-  - [Deployed stack](#deployed-stack)
   - [Ansible site.yml](#ansible-siteyml)
   - [Docker stack: docker-compose.yml](#docker-stack-docker-compose-yml)
   - [Secure VM Access without Public IP (IAP + VS Code Remote-SSH)](#secure-vm-access-without-public-ip-iap--vs-code-remote-ssh)
@@ -50,11 +48,18 @@ The infrastructure used through the packer is only for learning and knowledge pu
 
 This document summarizes the changes made on `main` to safely run Ansible configurations after `terraform apply`, using `OS Login + IAP` (no SSH keys and no public port 22) and an inventory generated *on-the-fly*.
 
+## Summary of what was done
+- Separated global resources into `environments/global` (API, OS Login IAM, IAP firewall, router/NAT) with its own state.
+- `environments/dev` now only contains the VM and labels, without duplicating global resources.
+- Workflows adjusted for `main`/`dev` with environment autodetect in `Apply-Live`.
+- Ansible in CI uses OS Login + IAP with service account impersonation and a temporary key.
+- Cleaned up state and imports to keep states consistent.
+
 ## 🔍 Health status of the environment
 
 [![Health report](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml/badge.svg)](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml)
 
-This line is an example of using Python to create an alert system and reports that are saved in the Github artifacts.
+> Note: example health report in Python (GitHub artifacts). Currently disabled due to IAP tunnel usage.
 
 
 ## What was added
@@ -83,14 +88,6 @@ This line is an example of using Python to create an alert system and reports th
 > 💡 If we want to cover prod, we add `prod` to the `matrix.env` in all three jobs.
 
 ---
-
-### 2) Minimal Ansible playbook: ansible/site.yml
-
-* Creates the folder structure on the VM under `/opt/monitoring`.
-* Copies (if they exist in the repo) the `Prometheus, Alertmanager, Grafana and Docker` files into the VM.
-
----
-
 ## Requirements
 
 ### Repository variables (Settings → Variables)
@@ -111,61 +108,6 @@ This line is an example of using Python to create an alert system and reports th
 ### Labels
 
 * VMs that should be included in the inventory must have `labels.env=dev` (or whatever environment you use).
-
-## Recommended repository structure (In progress)
-
-```bash
-environments/dev                     # (already added to merge main)
-ansible/
-  site.yml
-  requirements.yml
-  web/
-    index.html
-    style.css
-  files/
-    monitoring/
-      prometheus/
-        prometheus.yml                # (already in place)
-        rules/
-          alerts.yml                  # (already in place)
-      grafana/
-        provisioning/
-          datasources/
-            datasource.yml            # (already in place)
-          dashboards/
-            ejemplo.json              # (already in place)
-      template/
-        monitoring/
-          alertmanager.yml.j2         # (Template that will generate Alertmanager.yml)
-          docker-compose.yml.j2       # (Template for docker-compose.yml) 
-README.md
-README.en.md
-renovate.json
-```
-
-## How the full pipeline works
-
-1) A merge to `main` is done and `terraform-apply` runs (with environment review if applicable).
-
-2) When it finishes successfully, `inventory-and-ansible` is triggered:
-
-   * **Job 1**: generates inventory by labels and uploads an artifact.
-
-   * **Job 2**: marks artifact visibility (optional).
-
-   * **Job 3**: downloads the artifact into ansible/ and invokes ansible-playbook against your hosts.
-
-   * **Job 4**: installs the required Ansible collection community.docker.
-
-3) After the inventory-and-ansible pipeline finishes:
-
-   * Installs Docker and the Docker Compose plugin on the VM.
-
-   * Copies the monitoring stack to /opt/monitoring.
-
-   * Renders the Alertmanager configuration from a template using GitHub Secrets.
-
-   * Brings up (or updates) the stack with docker compose in an idempotent way.
 
 ## Folder structure in the VM
 ```makefile
@@ -191,19 +133,7 @@ renovate.json
 ```  
 
 
-## Deployed stack
-
-* `prometheus`
-
-* `alertmanager`
-
-* `node-exporter`
-
-* `web(simple hosting)`
-
-* `grafana` (with Prometheus datasource preconfigured)
-
-* Basic alert rules + host health
+## Ansible site.yml
 
 1. Install Docker + compose plugin.
 
