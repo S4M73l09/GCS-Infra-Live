@@ -86,15 +86,33 @@ jobs:
           set -euo pipefail
           mkdir -p ansible
           SSH_KEY_PATH="ansible/gha_ansible"
-          SSH_USERNAME="gha-ansible"
           if [ -f "${SSH_KEY_PATH}" ]; then
             rm -f "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
           fi
-          ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "${SSH_USERNAME}@gha"
+          ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "gha-ansible@gha"
           chmod 600 "${SSH_KEY_PATH}"
-          echo "${SSH_USERNAME}" > ansible/ssh_user.txt
           echo "ANSIBLE_SSH_KEY_PATH=${SSH_KEY_PATH}" >> "$GITHUB_ENV"
-          echo "ANSIBLE_SSH_USER=${SSH_USERNAME}" >> "$GITHUB_ENV"
+
+      - name: Register SSH key with OS Login
+        run: |
+          set -euo pipefail
+          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+
+          
+          gcloud compute os-login ssh-keys add \
+            --key-file="${ANSIBLE_SSH_KEY_PATH}.pub" \
+            --ttl=1h \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }}
+
+          SSH_USER=$(gcloud compute os-login describe-profile \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }} \
+            --format='value(posixAccounts[0].username)')
+          if [ -z "$SSH_USER" ]; then
+            echo "OS Login user not found in profile" >&2
+            exit 1
+          fi
+          echo "${SSH_USER}" > ansible/ssh_user.txt
+          echo "ANSIBLE_SSH_USER=${SSH_USER}" >> "$GITHUB_ENV"
 
 
       - name: Ensure GCP VMs are running
@@ -175,71 +193,6 @@ jobs:
           cat ansible/hosts.list || echo "NO INSTANCES FOUND"
           echo "=== ansible/hosts_with_zones.list ==="
           cat ansible/hosts_with_zones.list || echo "NO INSTANCES WITH ZONE"
-
-      - name: Install ephemeral SSH key on instances
-        env:
-          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
-          : "${ANSIBLE_SSH_USER:?ANSIBLE_SSH_USER is required}"
-          if [ ! -s ansible/hosts_with_zones.list ]; then
-            echo "No hosts detected, skipping SSH key installation."
-            exit 0
-          fi
-
-          PUB_KEY=$(cat "${ANSIBLE_SSH_KEY_PATH}.pub")
-          ENTRY="${ANSIBLE_SSH_USER}:${PUB_KEY}"
-          TMP_DIR=$(mktemp -d)
-          trap 'rm -rf "${TMP_DIR}"' EXIT
-
-          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
-            if [ -z "$INSTANCE_NAME" ]; then
-              continue
-            fi
-            # Limpia posibles \r o espacios residuales
-            INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
-            INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
-
-            if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
-              echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
-              continue
-            fi
-            ZONE_ARG=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
-            echo "Updating SSH keys for '${INSTANCE_NAME}' in zone '${ZONE_ARG}'"
-          CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
-            --project="${GCP_PROJECT}" \
-            --zone="${ZONE_ARG}" \
-            --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
-
-          if [ -z "$CURRENT_KEYS" ] && [ -n "$INSTANCE_ZONE" ]; then
-            # Intentar parsear zona con basename si viene como ruta completa
-            if [ "$ZONE_ARG" != "$INSTANCE_ZONE" ]; then
-              echo "Retrying with zone basename: ${ZONE_ARG}"
-              CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
-                --project="${GCP_PROJECT}" \
-                --zone="${ZONE_ARG}" \
-                --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
-              INSTANCE_ZONE="$ZONE_ARG"
-            fi
-          fi
-
-            if [ -n "$CURRENT_KEYS" ] && printf '%s\n' "$CURRENT_KEYS" | grep -Fxq "$ENTRY"; then
-              echo "Key already present on ${INSTANCE_NAME}, skipping."
-              continue
-            fi
-
-            if [ -n "$CURRENT_KEYS" ]; then
-              printf "%s\n%s\n" "$CURRENT_KEYS" "$ENTRY" > "${TMP_DIR}/ssh-keys"
-            else
-              printf "%s\n" "$ENTRY" > "${TMP_DIR}/ssh-keys"
-            fi
-
-            gcloud compute instances add-metadata "$INSTANCE_NAME" \
-              --project="${GCP_PROJECT}" \
-              --zone="${INSTANCE_ZONE}" \
-              --metadata-from-file ssh-keys="${TMP_DIR}/ssh-keys"
-          done < ansible/hosts_with_zones.list
 
       - name: Warm up SSH access via IAP
         env:
@@ -473,58 +426,8 @@ jobs:
 
       - name: Cleanup ephemeral SSH key from instances
         if: always()
-        env:
-          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
         run: |
-          set -euo pipefail
-          if [ ! -s ansible/hosts_with_zones.list ]; then
-            echo "No hosts file found, skipping cleanup."
-            exit 0
-          fi
-          if [ ! -f ansible/gha_ansible.pub ]; then
-            echo "No public key found, skipping cleanup."
-            exit 0
-          fi
-          SSH_USER="${ANSIBLE_SSH_USER:-gha-ansible}"
-          PUB_KEY=$(cat ansible/gha_ansible.pub)
-          ENTRY="${SSH_USER}:${PUB_KEY}"
-          TMP_DIR=$(mktemp -d)
-          trap 'rm -rf "${TMP_DIR}"' EXIT
-
-          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
-            if [ -z "$INSTANCE_NAME" ]; then
-              continue
-            fi
-            echo "Removing SSH key from ${INSTANCE_NAME} (${INSTANCE_ZONE})"
-            CURRENT_KEYS=$(gcloud compute instances describe "$INSTANCE_NAME" \
-              --project="${GCP_PROJECT}" \
-              --zone="${INSTANCE_ZONE}" \
-              --format='value[separator="\n"](metadata.items[?key="ssh-keys"].value)')
-
-            if [ -z "$CURRENT_KEYS" ]; then
-              continue
-            fi
-
-            UPDATED_KEYS=$(printf '%s\n' "$CURRENT_KEYS" | grep -Fxv "$ENTRY" || true)
-
-            if [ "$UPDATED_KEYS" = "$CURRENT_KEYS" ]; then
-              echo "Key entry not present on ${INSTANCE_NAME}, skipping."
-              continue
-            fi
-
-            if [ -z "$UPDATED_KEYS" ]; then
-              gcloud compute instances remove-metadata "$INSTANCE_NAME" \
-                --project="${GCP_PROJECT}" \
-                --zone="${INSTANCE_ZONE}" \
-                --keys ssh-keys
-            else
-              printf "%s\n" "$UPDATED_KEYS" > "${TMP_DIR}/ssh-keys"
-              gcloud compute instances add-metadata "$INSTANCE_NAME" \
-                --project="${GCP_PROJECT}" \
-                --zone="${INSTANCE_ZONE}" \
-                --metadata-from-file ssh-keys="${TMP_DIR}/ssh-keys"
-            fi
-          done < ansible/hosts_with_zones.list
+          echo "OS Login key uses TTL; no instance metadata cleanup needed."
 
   # ──────────────────────────────────────────────────────────────
   # 4) Construir instrucciones de túnel IAP a servicios (Prometheus, Grafana, Nginx)
