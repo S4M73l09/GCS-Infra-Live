@@ -11,10 +11,10 @@ packer {
 
 # Variables (las pasas desde GitHub Actions con tus repo variables)
 variable "project_id" { type = string }
-variable "region"     { type = string } # (no la usa el builder directamente, pero la guardamos para consistencia)
-variable "zone"       { type = string }
+variable "region" { type = string } # (no la usa el builder directamente, pero la guardamos para consistencia)
+variable "zone" { type = string }
 
-variable "network"    { type = string }
+variable "network" { type = string }
 variable "subnetwork" { type = string }
 
 # SA que usará el builder (impersonada vía OIDC desde el workflow)
@@ -43,10 +43,10 @@ variable "k3s_version" {
 # Versiones pinneadas para reproducibilidad (ajusta periódicamente para aplicar parches)
 variable "pkg_versions" {
   type = object({
-    curl            : string
-    git             : string
+    curl : string
+    git : string
     ca_certificates : string
-    jq              : string
+    jq : string
   })
   default = {
     curl            = "7.81.0-1ubuntu1.20"
@@ -84,10 +84,10 @@ locals {
 }
 
 source "googlecompute" "ubuntu2204_iap_nat" {
-  project_id          = var.project_id
-  zone                = var.zone
-  service_account_email = var.service_account_email
-  source_image_family = "ubuntu-2204-lts"
+  project_id              = var.project_id
+  zone                    = var.zone
+  service_account_email   = var.service_account_email
+  source_image_family     = "ubuntu-2204-lts"
   image_storage_locations = [var.region]
 
   # SSH efímera: NO definimos ssh_private_key_file => Packer usa/genera key temporal para el build
@@ -129,10 +129,10 @@ build {
       "export DEBIAN_FRONTEND=noninteractive",
       "sudo apt-get update -y",
       "sudo apt-get install -y \\",
-        "curl=${var.pkg_versions.curl} \\",
-        "git=${var.pkg_versions.git} \\",
-        "ca-certificates=${var.pkg_versions.ca_certificates} \\",
-        "jq=${var.pkg_versions.jq}",
+      "curl=${var.pkg_versions.curl} \\",
+      "git=${var.pkg_versions.git} \\",
+      "ca-certificates=${var.pkg_versions.ca_certificates} \\",
+      "jq=${var.pkg_versions.jq}",
       "sudo apt-mark hold curl git ca-certificates jq",
       "sudo apt-get clean",
       "sudo rm -rf /var/lib/apt/lists/*",

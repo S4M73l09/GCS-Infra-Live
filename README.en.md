@@ -51,7 +51,7 @@ Both Packer and Terraform use their own SA created in the Bootstrap to separate 
   - Paths: `environments/packer-dev/**`, branch `feat/dev`. Concurrency enabled.  
   - Terraform job (plan only) in `environments/packer-dev/terraform-net`, OIDC with `GCP_SERVICE_ACCOUNT`, no apply.  
   - Packer job (validate only) depends on plan; OIDC with `GCP_PACKER_SERVICE`; passes `PKR_VAR_*` and `PKR_VAR_service_account_email`.  
-  - `packer fmt` formats (no `-check`) to avoid style failures; `packer validate` only (no build).
+  - `packer fmt -check` enforces formatting (fails on style drift); `packer validate` only (no build).
 
 <a id="terraform-network-for-packer-dev"></a>
 ### Terraform network for packer-dev
@@ -147,7 +147,11 @@ live-infra/
 * GCP_SERVICE_ACCOUNT  
   **`terraform-bootstrap@bootstrap-PROJECT_NAME.iam.gserviceaccount.com`**
 
-These come from the Bootstrap project. They are not secrets (stored as **Variables**, not **Secrets**).
+* GCP_VM_SERVICE_ACCOUNT  
+  **`vm-runtime-packer@INFRA_PROJECT_ID.iam.gserviceaccount.com`**  
+  Runtime service account for the VM created by Terraform (`TF_VAR_vm_service_account`).
+
+OIDC variables come from the Bootstrap project (`GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`); the VM runtime variable (`GCP_VM_SERVICE_ACCOUNT`) should exist in the infra project. They are not secrets (stored as **Variables**, not **Secrets**).
 
 <a id="terraform-subject-to-change"></a>
 ### Terraform (subject to change)

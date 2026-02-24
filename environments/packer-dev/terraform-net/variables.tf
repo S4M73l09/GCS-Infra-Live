@@ -7,7 +7,7 @@ variable "region" {
 }
 
 variable "packer_image_family" {
-  type = string
+  type    = string
   default = "ubuntu-2204-iap-family"
 }
 
