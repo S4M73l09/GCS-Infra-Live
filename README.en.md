@@ -4,6 +4,17 @@
 
 ## Staging version - Test Workflow, configurations, etc.
 
+## Terraform Version Per Branch/Worktree (tfenv)
+
+This repository uses a `.terraform-version` file to pin the Terraform CLI version per branch/worktree.
+
+- Example (staging): `1.13.5`
+- Verification command: `terraform version`
+- Note: the file value must be **without quotes** (example: `1.13.5`, not `"1.13.5"`).
+
+This avoids `required_version` mismatches in `versions.tf` and keeps local/CI runs reproducible.
+
+
 
 # Index of contents
 <!-- toc -->

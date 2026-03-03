@@ -4,6 +4,17 @@
 
 ## Version Staging - Probar workflows, configuraciones y demas - separado por entorno
 
+## Version de Terraform por rama/worktree (tfenv)
+
+Este repositorio usa un archivo `.terraform-version` para fijar la version de Terraform CLI por rama/worktree.
+
+- Ejemplo (staging): `1.13.5`
+- Comando de verificacion: `terraform version`
+- Nota: el contenido del archivo debe ir **sin comillas** (ejemplo: `1.13.5`, no `"1.13.5"`).
+
+Esto evita errores de compatibilidad con `required_version` en `versions.tf` y mantiene ejecuciones reproducibles en local y CI.
+
+
 
 # Indice de contenidos
 <!-- toc -->
