@@ -62,11 +62,11 @@ resource "google_compute_router" "ubuntudev_router" {
 }
 
 resource "google_compute_router_nat" "ubuntudev_nat" {
-  name                               = "ubuntudev-nat"
-  router                             = google_compute_router.ubuntudev_router.name
-  region                             = google_compute_router.ubuntudev_router.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+  name                                = "ubuntudev-nat"
+  router                              = google_compute_router.ubuntudev_router.name
+  region                              = google_compute_router.ubuntudev_router.region
+  nat_ip_allocate_option              = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat  = "ALL_SUBNETWORKS_ALL_IP_RANGES"
   enable_endpoint_independent_mapping = true
 
   log_config {

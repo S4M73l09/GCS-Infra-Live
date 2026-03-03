@@ -27,6 +27,18 @@ Se importaron recursos ya existentes del proyecto a este estado global para no r
 - IAM OS Login / OS Admin.
 - Servicios de API (`compute`, `oslogin`).
 
+## Outputs disponibles
+Este stack publica outputs para que otros stacks (por ejemplo `packer-dev`) reutilicen la red global sin hardcodear:
+- `project_id`
+- `region`
+- `network_name`
+- `network_self_link`
+- `iap_ssh_firewall_name`
+- `iap_ssh_firewall_self_link`
+- `cloud_router_name`
+- `cloud_nat_name`
+- `cloud_nat_self_link`
+
 ## Cómo se aplica
 Este stack se **aplicó desde consola** porque son recursos “one-off” (se crean una vez y luego se gestionan aquí).  
 No es necesario añadirlo a los workflows en serie.

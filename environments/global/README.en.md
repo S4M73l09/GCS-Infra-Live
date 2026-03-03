@@ -27,6 +27,18 @@ Existing project resources were imported into this global state to avoid recreat
 - OS Login / OS Admin IAM.
 - API services (`compute`, `oslogin`).
 
+## Available outputs
+This stack publishes outputs so other stacks (for example `packer-dev`) can reuse global networking without hardcoded values:
+- `project_id`
+- `region`
+- `network_name`
+- `network_self_link`
+- `iap_ssh_firewall_name`
+- `iap_ssh_firewall_self_link`
+- `cloud_router_name`
+- `cloud_nat_name`
+- `cloud_nat_self_link`
+
 ## How it is applied
 This stack was **applied from the console/terminal** because these are “one-off” resources (created once and managed here).  
 It does not need to be part of the CI workflow chain.
