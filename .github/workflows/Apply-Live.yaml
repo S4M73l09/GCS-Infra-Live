@@ -118,10 +118,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Terraform 1.13.7
+      - name: Setup Terraform 1.13.5
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.13.7"
+          terraform_version: "1.13.5"
           terraform_wrapper: false
 
       - name: Google Auth (OIDC)
@@ -197,10 +197,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Terraform 1.13.7
+      - name: Setup Terraform 1.13.5
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.13.7"
+          terraform_version: "1.13.5"
           terraform_wrapper: false
 
       - name: Google Auth (OIDC)
