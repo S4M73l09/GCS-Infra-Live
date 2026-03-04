@@ -118,10 +118,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Terraform 1.9.7
+      - name: Setup Terraform 1.13.7
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.7"
+          terraform_version: "1.13.7"
           terraform_wrapper: false
 
       - name: Google Auth (OIDC)
@@ -173,7 +173,7 @@ jobs:
   approve_gate:
     name: Await approval (${{ needs.changes.outputs.env }})
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [changes, plan]
     if: needs.changes.outputs.tf == 'true' || needs.changes.outputs.force == 'true'
     environment:
       name: ${{ needs.changes.outputs.env }}     # crea Environments (p.ej. prod/dev) con Required reviewers
@@ -197,10 +197,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Terraform 1.9.7
+      - name: Setup Terraform 1.13.7
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.7"
+          terraform_version: "1.13.7"
           terraform_wrapper: false
 
       - name: Google Auth (OIDC)
