@@ -4,16 +4,9 @@ name: main-packer-dev
 on:
   push:
     branches:
-      - main
+      - staging
     paths:
       - environments/packer-dev/**
-      - .github/workflows/main-packer-dev.yaml
-  pull_request:
-    branches:
-      - main
-    paths:
-      - environments/packer-dev/**
-      - .github/workflows/main-packer-dev.yaml
   workflow_dispatch:
 
 concurrency:
@@ -52,7 +45,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.6.6"
+          terraform_version: "1.13.5"
 
       - name: Terraform fmt (check)
         run: terraform fmt -check -recursive
@@ -72,6 +65,8 @@ jobs:
           TF_VAR_subnet_name: ${{ vars.GCP_INFRA_SUBNETWORK }}
           # TF_VAR_subnet_cidr: ${{ vars.GCP_INFRA_SUBNET_CIDR }}
           # TF_VAR_iap_ssh_tag:  ${{ vars.GCP_INFRA_IAP_SSH_TAG }}
+          TF_VAR_vm_service_account: ${{ vars.GCP_VM_SERVICE_ACCOUNT }}
+
         run: terraform plan -no-color -out=tfplan.bin
 
       - name: Upload plan artifact
@@ -119,14 +114,16 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.6.6"
+          terraform_version: "1.13.5"
           terraform_wrapper: false
 
       - name: Terraform init
         run: terraform init -input=false
 
       - name: Terraform-apply
-        run: terraform apply -input=false -auto-approve ./plan/tfplan.bin
+        env:
+          TF_VAR_vm_service_account: ${{ vars.GCP_VM_SERVICE_ACCOUNT }}
+        run: terraform apply -input=false -auto-approve ../../../plan/environments/packer-dev/terraform-net/tfplan.bin
 
       - name: Export VM outputs
         id: export_vm
@@ -183,7 +180,7 @@ jobs:
         run: packer init .
 
       - name: Packer fmt (check)
-        run: packer fmt .
+        run: packer fmt -check .
 
       - name: Packer validate
         env:
@@ -191,26 +188,81 @@ jobs:
           PKR_VAR_region: ${{ vars.GCP_INFRA_REGION }}
           PKR_VAR_zone: ${{ vars.GCP_INFRA_ZONE }}
           PKR_VAR_service_account_email: ${{ vars.GCP_PACKER_SERVICE }}
-          PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}
-          PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}
+          PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}-stg
+          PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}-stg
           # Opcionales si quieres sobreescribir defaults:
           # PKR_VAR_image_family: "ubuntu-2204-iap-family"
           # PKR_VAR_iap_ssh_tag:  "iap-ssh"
         run: packer validate .
 
       - name: Packer build (IAP, built)
+        if: github.event_name == 'workflow_dispatch'
         env:
           PKR_VAR_project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
           PKR_VAR_region: ${{ vars.GCP_INFRA_REGION }}
           PKR_VAR_zone: ${{ vars.GCP_INFRA_ZONE }}
           PKR_VAR_service_account_email: ${{ vars.GCP_PACKER_SERVICE }}
-          PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}
-          PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}
+          PKR_VAR_network: ${{ vars.GCP_INFRA_NETWORK }}-stg
+          PKR_VAR_subnetwork: ${{ vars.GCP_INFRA_SUBNETWORK }}-stg
         run: packer build .
+
+  packer-image-gc:
+    name: packer-image-gc
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    needs: packer-validate-built
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Auth to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_PACKER_SERVICE }}
+      
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Antiguas copias de OS Packer (Mantiene las ultimas 7)
+        env:
+          PROJECT_ID: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          IMAGE_FAMILY: ubuntu-2204-iap-family
+          KEEP_LAST: "7"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t IMAGES < <(
+            gcloud compute images list \
+              --project="${PROJECT_ID}" \
+              --filter="family=${IMAGE_FAMILY}" \
+              --sort-by="~creationTimestamp" \
+              --format="value(name)"
+          )
+
+          total="${#IMAGES[@]}"
+          keep="${KEEP_LAST}"
+
+          if (( total <= keep )); then
+            echo "No es necesario eliminar las copias. total=${total}, keep=${keep}."
+            exit 0
+          fi
+
+          echo "Total de imagenes: ${total}. Manteniendo las ultimas ${keep}."
+          for img in "${IMAGES[@]:keep}"; do
+            echo "Eliminando imagen: ${img}"
+            gcloud compute images delete "${img}" \
+              --project="${PROJECT_ID}" \
+              --quiet
+          done
 
   cilium-installer:
     name: Cilium installer
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     if: github.event_name == 'workflow_dispatch'
     needs:
       - terraform-apply-net
@@ -231,6 +283,8 @@ jobs:
 
       - name: Setup helm
         uses: azure/setup-helm@v4
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
 
       - name: Download TF outputs
         uses: actions/download-artifact@v4
@@ -240,8 +294,8 @@ jobs:
 
       - name: Export VM info
         run: |
-          VM_NAME=$(jq -r '.vm_name.value' ./tfoutputs/tfoutputs.json)
-          echo "GCP_VM_NAME=${VM_NAME}" >> $GITHUB_ENV
+          GCP_VM_NAME=$(jq -r '.vm_name.value' ./tfoutputs/tfoutputs.json)
+          echo "GCP_VM_NAME=${GCP_VM_NAME}" >> $GITHUB_ENV
           VM_IP=$(jq -r '.vm_internal_ip.value' ./tfoutputs/tfoutputs.json)
           echo "GCP_VM_IP=${VM_IP}" >> $GITHUB_ENV
 
@@ -249,17 +303,16 @@ jobs:
         env:
           PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
           ZONE: ${{ vars.GCP_INFRA_ZONE }}
-          VM_NAME: ${{ env.GCP_VM_NAME }}
         run: |
           set -euo pipefail
-          gcloud compute ssh "$VM_NAME" \
+          gcloud compute ssh "$GCP_VM_NAME" \
             --tunnel-through-iap \
             --project "${PROJECT}" \
             --zone "${ZONE}" \
             --command "sudo cat /etc/rancher/k3s/k3s.yaml" \
             --impersonate-service-account="${{ vars.GCP_SERVICE_ACCOUNT }}" \
             > k3s.yaml
-          INTERNAL_IP=$(gcloud compute instances describe "${VM_NAME}" --project "${PROJECT}" --zone "${ZONE}" --format='get(networkInterfaces[0].networkIP)')
+          INTERNAL_IP=$(gcloud compute instances describe "${GCP_VM_NAME}" --project "${PROJECT}" --zone "${ZONE}" --format='get(networkInterfaces[0].networkIP)')
           sed -i "s/127.0.0.1/${INTERNAL_IP}/g" k3s.yaml
           echo "KUBECONFIG=$(pwd)/k3s.yaml" >> $GITHUB_ENV
 
@@ -271,7 +324,7 @@ jobs:
           helm repo add cilium https://helm.cilium.io
           helm repo update
           API_HOST=$(grep server: "$KUBECONFIG" | head -1 | awk '{print $2}' | sed 's#https://##' | cut -d: -f1)
-          helm install cilium cilium/cilium \
+          helm upgrade --install cilium cilium/cilium \
             --namespace kube-system \
             --set kubeProxyReplacement=strict \
             --set k8sServiceHost="${API_HOST}" \
@@ -286,7 +339,7 @@ jobs:
           set -euo pipefail
           helm repo add gcp-filestore https://kubernetes-sigs.github.io/gcp-compute-persistent-disk-csi-driver/
           helm repo update
-          helm install gcp-pd-csi gcp-filestore/gcp-compute-persistent-disk-csi-driver \
+          helm upgrade --install gcp-pd-csi gcp-filestore/gcp-compute-persistent-disk-csi-driver \
             --namespace kube-system
 
       - name: Apply StorageClass (default)
@@ -322,7 +375,7 @@ jobs:
           PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
           ZONE: ${{ vars.GCP_INFRA_ZONE }}
         run: |
-          cat > iap-ssh-command.txt <<'EOF'
+          cat > iap-ssh-command.txt <<EOF
           # Se sustituye <INSTANCE_NAME> y <USER> segun la VM.
           gcloud compute ssh <USER>@<INSTANCE_NAME> \
             --project ${PROJECT} \
