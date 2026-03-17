@@ -62,7 +62,7 @@ variable "image_labels" {
   default = {
     managed_by = "packer"
     os         = "ubuntu-2204"
-    env        = "dev"
+    env        = "staging"
     purpose    = "image"
   }
 }
@@ -73,7 +73,7 @@ variable "build_labels" {
   default = {
     managed_by = "packer"
     os         = "ubuntu-2204"
-    env        = "dev"
+    env        = "staging"
     purpose    = "image-build"
   }
 }
