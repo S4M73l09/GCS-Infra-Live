@@ -43,7 +43,7 @@ variable "vm_name" {
 
 variable "vm_machine_type" {
   type    = string
-  default = "e2-medium"
+  default = "e2-small"
 }
 
 variable "vm_service_account" {
