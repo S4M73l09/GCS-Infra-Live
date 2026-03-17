@@ -38,3 +38,4 @@ crash.*.log
 *.iml
 .DS_Store
 Thumbs.dbreports/
+environments/packer-dev/terraform-net/modules/auto-stop-idle/function.zip
