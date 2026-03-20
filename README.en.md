@@ -84,8 +84,8 @@ This line is an example of using Python to create an alert system and reports th
 
 #### *1) generate_inventory*
 * Authenticates to GCP via OIDC.
-* Generates `ansible/hosts.ini` with RUNNING VMs that have `labels.env=environment (dev by default)`.
-* Creates `ansible/ansible.cfg` pointing to `~/.ssh/config (gcloud + IAP)`.
+* Generates `ansible/hosts.ini` (temporary runtime file for the job) with RUNNING VMs that have `labels.env=environment (dev by default)`.
+* Creates `ansible/ansible.cfg` (temporary runtime file for the job) pointing to `~/.ssh/config (gcloud + IAP)`.
 * Verifies that the inventory does not contain IPs (only GCE FQDNs).
 * Uploads both files as artifact: `ansible-inventory-env`.
 
@@ -93,15 +93,15 @@ This line is an example of using Python to create an alert system and reports th
 * Publishes/echoes the ready artifact (optional, for visibility only).
 
 #### *3) run_ansible*
-* Downloads the artifact into `ansible/.`
+* Downloads the artifact into `ansible/.` (temporary runtime job directory)
 * Installs Ansible.
-* Runs `ansible-playbook ansible/site.yml` using `ANSIBLE_CONFIG=ansible/ansible.cfg`.
+* Runs `ansible-playbook environments/staging/ansible/site.yml` using `ANSIBLE_CONFIG=ansible/ansible.cfg`.
 
 > 💡 If we want to cover prod, we add `prod` to the `matrix.env` in all three jobs.
 
 ---
 
-### 2) Minimal Ansible playbook: ansible/site.yml
+### 2) Minimal Ansible playbook: environments/staging/ansible/site.yml
 
 * Creates the folder structure on the VM under `/opt/monitoring`.
 * Copies (if they exist in the repo) the `Prometheus, Alertmanager, Grafana and Docker` files into the VM.
@@ -133,7 +133,7 @@ This line is an example of using Python to create an alert system and reports th
 
 ```bash
 environments/dev                     # (already added to merge main)
-ansible/
+environments/staging/ansible/
   site.yml
   requirements.yml
   web/
@@ -170,7 +170,7 @@ renovate.json
 
    * **Job 2**: marks artifact visibility (optional).
 
-   * **Job 3**: downloads the artifact into ansible/ and invokes ansible-playbook against your hosts.
+   * **Job 3**: downloads the artifact into `ansible/` (temporary runtime dir) and invokes ansible-playbook against your hosts.
 
    * **Job 4**: installs the required Ansible collection community.docker.
 
@@ -245,7 +245,7 @@ When the web or stack files change, the `restart monitoring stack` handler is no
 
 Services defined in `docker-compose.yml`
 
-Path: `ansible/templates/monitoring/docker-compose.yml.j2`.
+Path: `environments/staging/ansible/templates/monitoring/docker-compose.yml.j2`.
 
 Ansible copies this template to the VM at `{{ monitoring_base_dir }}/docker/docker-compose.yml` and brings up the stack using `community.docker.docker_compose_v2` (`project_src = {{ monitoring_base_dir }}/docker`).
 
@@ -335,7 +335,7 @@ It also adds good practices:
 
 ## 📊 Prometheus: prometheus.yml + rules
 
-Path: `ansible/files/monitoring/prometheus/prometheus.yml`.
+Path: `environments/staging/ansible/files/monitoring/prometheus/prometheus.yml`.
 
 Scrapes:
 
@@ -351,7 +351,7 @@ Loads rules from `/etc/prometheus/rules/*.yml`.
 
 ## Alert rules
 
-Path: `ansible/files/monitoring/prometheus/rules/alerts.yml`.
+Path: `environments/staging/ansible/files/monitoring/prometheus/rules/alerts.yml`.
 
 It includes two rule groups:
 
@@ -369,7 +369,7 @@ Both jobs use `relabel_configs` to send requests to the `blackbox-exporter` in `
 
 ## 📈 Grafana: datasource provisioning
 
-Path: `ansible/files/monitoring/grafana/provisioning/datasources/datasource.yml`.
+Path: `environments/staging/ansible/files/monitoring/grafana/provisioning/datasources/datasource.yml`.
 
 Datasource for Prometheus created automatically when Grafana starts.
 
@@ -377,7 +377,7 @@ Besides, Grafana uses `secrets and variables` to store the Prometheus user and p
 
 ## 📬 Alertmanager: template with SMTP and GitHub Secrets
 
-Path: `ansible/templates/monitoring/alertmanager.yml.j2`.
+Path: `environments/staging/ansible/templates/monitoring/alertmanager.yml.j2`.
 
 Alertmanager is configured from a Jinja2 template.
 
@@ -410,7 +410,7 @@ The Ansible step in the workflow passes these secrets to the playbook as `-e` va
   * Infrastructure description (Terraform + GCP + Github Actions + Ansible + Docker)
   * Youtube video embeds showing the Bootstrap/repo-Live of the infrastructure
   * Links to the Bootstrap and Infra-Live repositories
-* HTML/CSS content lives in the repo under `ansible/web` and is copied to `/opt/web01` using Ansible.
+* HTML/CSS content lives in the repo under `environments/staging/ansible/web` and is copied to `/opt/web01` using Ansible.
 
 ## Artifacts and visibility
 
@@ -665,7 +665,7 @@ the Terraform changes that are already ready for production.
 ## Artifacts and visibility
 
 * Inventory and cfg are stored as an artifact:
-`ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg`
+`ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg` (temporary runtime artifacts)
 
 * You can download it from the **Actions** tab of the corresponding run.
 

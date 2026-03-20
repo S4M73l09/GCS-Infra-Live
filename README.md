@@ -77,22 +77,22 @@ Esta linea es un ejemplo de justo utilizar `Python` para crear un sistema de ale
 * Hace 3 jobs separados (visibilidad “pro” en Actions):
    #### *1) generate_inventory*
      * Autentica en GCP vía OIDC.
-     * Genera ansible/hosts.ini con las VMs RUNNING que tengan `labels.env=entorno (por defecto dev)`.
-     * Crea `ansible/ansible.cfg` apuntando a `~/.ssh/config (gcloud + IAP)`.
+     * Genera `ansible/hosts.ini` (runtime temporal del job) con las VMs RUNNING que tengan `labels.env=entorno (por defecto dev)`.
+     * Crea `ansible/ansible.cfg` (runtime temporal del job) apuntando a `~/.ssh/config (gcloud + IAP)`.
      * Verifica que el inventario no contenga IPs (solo FQDN GCE).
      * Sube ambos ficheros como `artifact: ansible-inventory-env`.
    #### *2) publish_inventory*
      * Publica/eco del artifact listo (opcional, solo visibilidad).
    #### *3) run_ansible*
-     * Descarga el artifact en `ansible/.`
+     * Descarga el artifact en `ansible/.` (directorio runtime temporal del job)
      * Instala Ansible.
-     * Ejecuta `ansible-playbook ansible/site.yml` usando `ANSIBLE_CONFIG=ansible/ansible.cfg`.  
+     * Ejecuta `ansible-playbook environments/staging/ansible/site.yml` usando `ANSIBLE_CONFIG=ansible/ansible.cfg`.  
 
 
 #### Si queremos cubrir prod, añadimos prod a la matrix.env en los tres jobs.
 ---
 
-### 2) Playbook mínimo de Ansible: ansible/site.yml
+### 2) Playbook mínimo de Ansible: environments/staging/ansible/site.yml
 * Crea la estructura de carpetas en la VM bajo `/opt/monitoring`.
 * Copia (si existen en el repo) los archivos de `Prometheus, Alertmanager, Grafana y Docker` hacia la VM.
 ---
@@ -116,7 +116,7 @@ Esta linea es un ejemplo de justo utilizar `Python` para crear un sistema de ale
 ## Estructura recomendada del repositorio (En proceso)
 ```bash
 environments/dev                     # (Ya añadido por mergear a main)
-ansible/
+environments/staging/ansible/
   site.yml
   requirements.yml
   web/
@@ -148,7 +148,7 @@ renovate.json
 2. Al terminar OK, se lanza `inventory-and-ansible`:
    * **Job 1:** genera inventario por etiquetas y sube artifact.
    * **Job 2:** marca visibilidad del artifact (opcional).
-   * **Job 3:** descarga el artifact en `ansible/` e invoca `ansible-playbook` contra tus hosts.
+   * **Job 3:** descarga el artifact en `ansible/` (runtime temporal) e invoca `ansible-playbook` contra tus hosts.
    * **Job 4:** Instala la coleccion necesaria de Ansible `community.docker`.
 
 3. Despues de la ejecucion del pipeline `inventory-and-ansible`.
@@ -222,7 +222,7 @@ Cuando cambian los archivos de la web o del stack, se notifica al handler `resta
 Servicios desplegados en el `docker-compose.yml`
 
 
-Ruta: `ansible/templates/monitoring/docker-compose.yml.j2`
+Ruta: `environments/staging/ansible/templates/monitoring/docker-compose.yml.j2`
 
 En esta plantilla se usa justo lo necesario para el despliegue, se usa plantilla para que se puedan meter las variables de usuario de Grafana para mejor seguridad.
 
@@ -314,7 +314,7 @@ Ademas añade buenas practicas:
 
 ## 📊 Prometheus: prometheus.yml + reglas
 
-Ruta: `ansible/files/monitoring/prometheus/prometheus.yml`.
+Ruta: `environments/staging/ansible/files/monitoring/prometheus/prometheus.yml`.
 
 Scrapea:
 
@@ -330,7 +330,7 @@ Carga reglas desde `/etc/prometheus/rules/*.yml`.
 
 ### Reglas de alertas
 
-Ruta: `ansible/files/monitoring/prometheus/rules/alerts.yml`.
+Ruta: `environments/staging/ansible/files/monitoring/prometheus/rules/alerts.yml`.
 
 Incluye dos grupos de reglas:
 
@@ -347,7 +347,7 @@ Ambos jobs usan `relabel_configs` para enviar las peticiones al `blackbox-export
 
 ## 📈 Grafana: datasource provisioning
 
-Ruta: `ansible/files/monitoring/grafana/provisioning/datasources/datasource.yml`.
+Ruta: `environments/staging/ansible/files/monitoring/grafana/provisioning/datasources/datasource.yml`.
 
 Datasource de Prometheus creado automáticamente al arrancar Grafana.
 
@@ -355,7 +355,7 @@ Ademas, Grafana usa `secrets and variables` para almacenar el usuario y la contr
 
 ## 📬 Alertmanager: plantilla con SMTP y GitHub Secrets
 
-Ruta: `ansible/templates/monitoring/alertmanager.yml.j2`
+Ruta: `environments/staging/ansible/templates/monitoring/alertmanager.yml.j2`
 
 Alertmanager se configura a partir de una plantilla Jinja2.
 
@@ -386,7 +386,7 @@ El step de Ansible en el workflow pasa estos secrets al playbook como variables 
    * Descripcion de la infraestructura (Terraform + GCP + Github Action + Ansible + Docker)
    * Embeds de video de youtube mostrando el Bootstrap/repo-Live de la infraestructura
    * Enlaces a los repositorios de ***Bootstrap*** y ***Infra-Live***
-* El contenido HTML/CSS vive en el repo bajo `ansible/web` y se copia a `/opt/web01` mediante Ansible.
+* El contenido HTML/CSS vive en el repo bajo `environments/staging/ansible/web` y se copia a `/opt/web01` mediante Ansible.
 
 ## Artifacts y visibilidad 
 
@@ -494,7 +494,7 @@ Con este flujo:
 
 ## Artefacts y visibilidad
 * Inventario y cfg quedan guardados como artifact:  
-`ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg`
+`ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg` (artefactos runtime temporales)
 
 * Puedes descargarlo desde la pestaña ***Actions*** del run correspondiente.
 
