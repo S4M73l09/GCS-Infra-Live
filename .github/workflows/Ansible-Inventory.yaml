@@ -8,7 +8,7 @@ on:
         required: false
         default: "staging"
   workflow_run:
-    workflows: ["terraform-apply"] # nombre exacto del workflow de apply
+    workflows: ["terraform-apply"] # nombres del workflow de apply
     branches: [staging]
     types: [completed]
 
@@ -67,10 +67,10 @@ jobs:
     container:
       image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5 # Digest del manifiesto de la versión 550.0.0
     steps:
-      - name: Checkout main
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 0
 
       - name: Auth GCP (OIDC)
@@ -322,10 +322,10 @@ jobs:
     container:
       image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5 # Manifiesto digest de la versión 550.0.0
     steps:
-      - name: Checkout main
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 0
 
       - name: Auth GCP (OIDC)
