@@ -1,19 +1,18 @@
 name: terraform-apply
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 on:
   push:
     branches: ["staging"]
     paths:
-      - "environments/**"
-      - "modules/**"
-      - "**/*.tf"
-      - "**/*.tfvars"
-      - "**/.tflint.hcl"
+      - "environments/staging/**"
+      - "environments/staging/modules/**"
       - ".github/workflows/Apply-Live.yaml"
   workflow_dispatch:
     inputs:
       env_dir:
-        description: 'Environment to apply (folder under environments/)'
+        description: 'Environment to apply (allowed: staging)'
         required: false
         default: 'staging'
       force_apply:
@@ -65,23 +64,25 @@ jobs:
           # Default seguro
           ENV="environments/dev"
 
-          # Si se lanzó manual con input, úsalo
+          # Si se lanzó manual con input, validarlo estrictamente
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
-            ENV="environments/${{ inputs.env_dir }}"
+            case "${{ inputs.env_dir }}" in
+              staging)
+                ENV="environments/staging"
+                ;;
+              *)
+                echo "Invalid env_dir='${{ inputs.env_dir }}'. Only 'staging' is allowed in this workflow." >&2
+                exit 1
+                ;;
+            esac
           else
-            # Auto-detect por rama (staging/main)
+            # Entorno fijo por rama (evita sobrescritura incorrecta)
             if [[ "${{ github.ref_name }}" == "staging" ]]; then
               ENV="environments/staging"
             elif [[ "${{ github.ref_name }}" == "main" ]]; then
               ENV="environments/dev"
             fi
 
-            # Deducir primer entorno tocado respecto a main (no crítico, pero ayuda)
-            changed_env="$(git diff --name-only "origin/main~1" "origin/main" 2>/dev/null \
-              | awk -F/ '/^environments\//{print $1"/"$2}' | sort -u | head -n1 || true)"
-            if [[ -n "$changed_env" ]]; then
-              ENV="$changed_env"
-            fi
           fi
 
           ENV_NAME="$(basename "$ENV")"
@@ -282,8 +283,8 @@ jobs:
   publish-env-artifact:
     name: Publish env artifact
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: ${{ needs.changes.result == 'success' }}
+    needs: [changes, apply]
+    if: ${{ (needs.changes.outputs.tf == 'true' || needs.changes.outputs.force == 'true') && needs.apply.result == 'success' }}
     steps:
       - name: Save environment name
         run: echo "${{ needs.changes.outputs.env }}" > env.txt
