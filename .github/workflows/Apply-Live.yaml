@@ -227,12 +227,54 @@ jobs:
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform output -json > outputs.json
 
+      - name: Read dynamic vm_zone (staging only)
+        if: ${{ needs.changes.outputs.env == 'staging' }}
+        id: vm_zone
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if terraform output -raw vm_zone > vm_zone.txt 2>/dev/null; then
+            ZONE="$(cat vm_zone.txt)"
+            echo "vm_zone=${ZONE}" >> "$GITHUB_OUTPUT"
+            echo "Detected vm_zone: ${ZONE}"
+          else
+            echo "vm_zone=" >> "$GITHUB_OUTPUT"
+            echo "No vm_zone output in this environment (expected for some stacks like global)."
+            : > vm_zone.txt
+          fi
+
       - name: Upload terraform outputs
         uses: actions/upload-artifact@v4
         with:
           name: terraform-outputs-${{ needs.changes.outputs.env }}
           path: ${{ needs.changes.outputs.dir }}/outputs.json
           retention-days: 3
+
+      - name: Upload vm_zone artifact (staging only)
+        if: ${{ needs.changes.outputs.env == 'staging' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: applied-vm-zone
+          path: ${{ needs.changes.outputs.dir }}/vm_zone.txt
+          retention-days: 1
+
+      - name: Summary (dynamic zone)
+        shell: bash
+        run: |
+          {
+            echo "## Terraform Apply summary"
+            echo "- Environment: ${{ needs.changes.outputs.env }}"
+            if [ "${{ needs.changes.outputs.env }}" = "staging" ]; then
+              if [ -n "${{ steps.vm_zone.outputs.vm_zone }}" ]; then
+                echo "- vm_zone (dynamic output): ${{ steps.vm_zone.outputs.vm_zone }}"
+              else
+                echo "- vm_zone (dynamic output): not found"
+              fi
+            else
+              echo "- vm_zone: skipped (only staging)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ──────────────────────────────────────────────────────────────
   # 4) Publicar artefacto con el nombre del entorno
