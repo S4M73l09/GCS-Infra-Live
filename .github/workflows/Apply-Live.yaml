@@ -135,9 +135,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.terraform.d/plugin-cache
-          key: tf-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          key: tf-${{ runner.os }}-${{ hashFiles(format('{0}/.terraform.lock.hcl', needs.changes.outputs.dir)) }}
           restore-keys: |
             tf-${{ runner.os }}-
+
+      - name: Cache TFlint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ runner.os }}-${{ hashFiles('**/.tflint.hcl') }}
+          restore-keys: |
+            tflint-${{ runner.os }}-
 
       - name: Configure TF plugin cache
         run: |
@@ -147,6 +155,26 @@ jobs:
       - name: Terraform Init (readonly lockfile)
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform init -input=false -lockfile=readonly
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint init + lint
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: |
+          tflint --init
+          tflint -f compact
+
+      - name: Debug Terraform inputs (machine type)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PWD=$(pwd)"
+          echo "--- terraform.tfvars (first 60 lines) ---"
+          sed -n '1,60p' terraform.tfvars || true
+          echo "--- local.vm_machine_type ---"
+          terraform console <<< 'local.vm_machine_type'
 
       - name: Terraform Plan (save)
         id: planfile
@@ -219,6 +247,14 @@ jobs:
       - name: Terraform Init (reconfigure)
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform init -input=false -lockfile=readonly -reconfigure
+
+      - name: Debug tfplan machine type (before apply)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "--- machine_type from tfplan.bin ---"
+          terraform show -no-color tfplan.bin | grep -E 'machine_type|name\s*=\s*"staging-oslogin-ubuntu"' -n || true
 
       - name: Terraform Apply (approved plan)
         working-directory: ${{ needs.changes.outputs.dir }}
