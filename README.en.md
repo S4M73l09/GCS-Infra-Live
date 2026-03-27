@@ -1,680 +1,152 @@
-# GCS-Infra-Live EN -> [ES](README.md)
+# Infra Live - Environment Index
 
-> Note: This branch is **staging**. It may contain test changes and configuration before reaching `main`.
+This README is the environment entry point for the `staging` branch.
 
-## Staging version - Test Workflow, configurations, etc.
+## Index
 
-## Terraform Version Per Branch/Worktree (tfenv)
-
-This repository uses a `.terraform-version` file to pin the Terraform CLI version per branch/worktree.
-
-- Example (staging): `1.13.5`
-- Verification command: `terraform version`
-- Note: the file value must be **without quotes** (example: `1.13.5`, not `"1.13.5"`).
-
-This avoids `required_version` mismatches in `versions.tf` and keeps local/CI runs reproducible.
-
-
-
-# Index of contents
-<!-- toc -->
-
-- [Infra using and baking Packer image](#infra-using-and-baking-packer-image)
-  - [Packer + Terraform workflow (feat/dev)](#packer-terraform-workflow-featdev)
-  - [Packer image baked with k3s](#packer-image-baked-with-k3s)
-- [Infra Apply + Ansible (post-apply) on main branch](#infra-apply--ansible-post-apply-on-main-branch)
-  - [Health status of the environment](#-health-status-of-the-environment)
-  - [What was added](#what-was-added)
-  - [Requirements](#requirements)
-  - [Recommended repository structure (In progress)](#recommended-repository-structure-in-progress)
-  - [How the full pipeline works](#how-the-full-pipeline-works)
-  - [Folder structure in the VM](#folder-structure-in-the-vm)
-  - [Deployed stack](#deployed-stack)
-  - [Ansible site.yml](#ansible-siteyml)
-  - [Docker stack: docker-compose.yml](#docker-stack-docker-compose-yml)
-  - [Secure VM Access without Public IP (IAP + VS Code Remote-SSH)](#secure-vm-access-without-public-ip-iap--vs-code-remote-ssh)
-  - [Artifacts and visibility](#artifacts-and-visibility)
-  - [Best practices we follow](#best-practices-we-follow)
-
-<!-- tocstop -->
-
-## Infra using and baking Packer image
-
-This part describes the structure and creation of resources using a Packer template and Terraform files generated when a `pull_request` from the test branch is opened against `main`. Packer validation already runs in the test branch `feat/dev`.
-
-The infrastructure used through the packer is only for learning and knowledge purposes; due to the complexity of this part of the project, it will be improved and continued little by little.
-
-## Packer + Terraform workflow (feat/dev)
-- Workflow: `.github/workflows/feat-dev-packer-net-plan.yaml`.
-- Order: Packer (init/fmt/validate) → Terraform (fmt/init/validate/plan) in `environments/packer-dev/terraform-net` (VPC, private subnet, NAT, IAP firewall, and VM without public IP based on the Packer image).
-- Image: family `ubuntu-2204-iap-family` published by Packer in `TF_VAR_project_id`.
-- Vars: `GCP_INFRA_PROJECT_ID/REGION/ZONE/NETWORK/SUBNETWORK`, `GCP_VM_SERVICE_ACCOUNT`, and Packer SA (`GCP_PACKER_SERVICE`) are passed as repo variables.
-- Final apply: done in the `main` workflow (manual with protected environment); in `feat/dev` only plan and Packer are validated.
-
-## Packer image baked with k3s
-- Base: Ubuntu 22.04, no public IP, IAP access, tags `iap-ssh`/`packer-dev`.
-- k3s `v1.34.1+k3s1` installed but stopped (`INSTALL_K3S_SKIP_START=true`); base config at `/etc/rancher/k3s/config.yaml` (traefik/servicelb disabled, flannel vxlan, CIDRs 10.42/10.43, `node-name: k3s-server-1`, kubeconfig 0644).
-- Token **not** embedded: generated at runtime when the server starts.
-- Pinned and held packages (`curl`, `git`, `ca-certificates`, `jq`); APT cache cleaned; image published in the `ubuntu-2204-iap-family` family.
-- Authentication: Packer uses a different `SA` than Terraform to separate it, and also utilizes `IAP` + `firewall` to limit access.
-- OS Login is currently set to `false`, but it can be enabled later without any issues.
-- To consume the image, the family specified here is `local.packer_image_family`, which is used in `boot_disk`. If the image is published in another project, you would need to change the `project` setting in the same directory.
-
-
-## Infra Apply + Ansible (post-apply) on main branch
-
-This document summarizes the changes made on `main` to safely run Ansible configurations after `terraform apply`, using `OS Login + IAP` (no SSH keys and no public port 22) and an inventory generated *on-the-fly*.
-
-> Note: In CI we use OS Login with **service account impersonation** to register a temporary SSH key and obtain the correct POSIX user.
-
-## 🔍 Health status of the environment
-
-[![Health report](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml/badge.svg)](https://github.com/S4M73l09/GCS-Infra-Live/actions/workflows/health-report.yml)
-
-This line is an example of using Python to create an alert system and reports that are saved in the Github artifacts.
-
-
-## What was added
-
-### 1) Chained workflow: Inventory-And-Ansible.yaml
-
-* Location: `.github/workflows/Inventory-And-Ansible.yaml`
-* It is triggered automatically when the `terraform-apply` workflow finishes successfully.
-* It runs 3 separate jobs (that “pro” visibility in Actions):
-
-#### *1) generate_inventory*
-* Authenticates to GCP via OIDC.
-* Generates `ansible/hosts.ini` (temporary runtime file for the job) with RUNNING VMs that have `labels.env=environment (dev by default)`.
-* Creates `ansible/ansible.cfg` (temporary runtime file for the job) pointing to `~/.ssh/config (gcloud + IAP)`.
-* Verifies that the inventory does not contain IPs (only GCE FQDNs).
-* Uploads both files as artifact: `ansible-inventory-env`.
-
-#### *2) publish_inventory*
-* Publishes/echoes the ready artifact (optional, for visibility only).
-
-#### *3) run_ansible*
-* Downloads the artifact into `ansible/.` (temporary runtime job directory)
-* Installs Ansible.
-* Runs `ansible-playbook environments/staging/ansible/site.yml` using `ANSIBLE_CONFIG=ansible/ansible.cfg`.
-
-> 💡 If we want to cover prod, we add `prod` to the `matrix.env` in all three jobs.
+- [Staging Environment](#staging-environment)
+- [Packer-dev Environment](#packer-dev-environment)
 
 ---
 
-### 2) Minimal Ansible playbook: environments/staging/ansible/site.yml
+## Staging Environment
 
-* Creates the folder structure on the VM under `/opt/monitoring`.
-* Copies (if they exist in the repo) the `Prometheus, Alertmanager, Grafana and Docker` files into the VM.
+<details open>
+<summary><strong>Show full Staging details</strong></summary>
+
+### Scope
+
+- Terraform: `environments/staging`
+- Ansible: `environments/staging/ansible`
+- Main workflows:
+  - `.github/workflows/Apply-Live.yaml` (`name: terraform-apply`)
+  - `.github/workflows/Ansible-Inventory.yaml` (`name: Ansible-Inventory`)
+
+### Structure
+
+```text
+environments/staging/
+  backend.tf
+  providers.tf
+  versions.tf
+  variables.tf
+  terraform.tfvars
+  main.tf
+  ansible/
+    site.yml
+    requirements.yml
+    files/
+    templates/
+    web/
+```
+
+### Terraform (`environments/staging`)
+
+What it creates:
+
+- Ubuntu 22.04 VM (`google_compute_instance`)
+- Environment labels (`env = staging`)
+- Outputs:
+  - `vm_name`
+  - `vm_zone`
+  - `vm_internal_ip`
+  - `vm_external_ip`
+
+Key parameters (`terraform.tfvars`):
+
+- `project_id`, `region`, `zone`
+- `series`, `vcpus`, `memory_mb`
+- `disk_size_gb`
+- `create_public_ip`
+
+Technical note:
+
+- Custom `machine_type` is built in `main.tf` as:
+  - `${var.series}-custom-${var.vcpus}-${var.memory_mb}`
+
+### Ansible (`environments/staging/ansible`)
+
+What it applies:
+
+- Host bootstrap/configuration
+- Monitoring/web stack via compose template
+- Prometheus, Alertmanager, Grafana, and Nginx
+
+Important paths:
+
+- Playbook: `environments/staging/ansible/site.yml`
+- Compose template: `environments/staging/ansible/templates/monitoring/docker-compose.yml.j2`
+- Prometheus: `environments/staging/ansible/files/monitoring/prometheus/prometheus.yml`
+- Alert rules: `environments/staging/ansible/files/monitoring/prometheus/rules/alerts.yml`
+
+### Staging Workflows
+
+#### `Apply-Live.yaml` (`terraform-apply`)
+
+- Main trigger: `push` to `staging` with changes in `environments/staging/**`
+- Flow: resolve environment -> plan -> approval gate -> apply
+- Includes:
+  - Terraform/TFLint cache
+  - `tflint --init` + lint
+  - `outputs.json` export
+  - `applied-env` artifact for chained workflows
+
+#### `Ansible-Inventory.yaml` (`Ansible-Inventory`)
+
+- Trigger:
+  - `workflow_dispatch`
+  - `workflow_run` from `terraform-apply` (staging)
+- Generates runtime inventory under `ansible-runtime/`
+- Discovers VM zone dynamically at runtime
+- Supports `debug_mode` for diagnostics
+- Executes `environments/staging/ansible/site.yml`
+
+### Applied optimizations
+
+- Dedicated ephemeral runtime path (`ansible-runtime/`)
+- On-demand debug mode (`debug_mode`)
+- IAP SSH warm-up with retries/backoff
+- Terraform/TFLint/Ansible cache
+- `pull_policy: if_not_present` in staging Docker services
+
+### Recommended flow
+
+1. Edit `environments/staging/**` or `environments/staging/ansible/**`
+2. Push to `staging`
+3. Run `terraform-apply`
+4. Run/chain `Ansible-Inventory`
+5. Validate artifacts and final state
+
+Detailed docs:
+
+- [README staging EN](environments/staging/README.en.md)
+- [README staging](environments/staging/README.md)
+
+</details>
 
 ---
 
-## Requirements
+## Packer-dev Environment
 
-### Repository variables (Settings → Variables)
+<details>
+<summary><strong>Show Packer-dev summary</strong></summary>
 
-* `GCP_WORKLOAD_IDENTITY_PROVIDER` (WIF)
-* `GCP_SERVICE_ACCOUNT` (SA used by OIDC)
+`packer-dev` is used for base image flow + lab network/VM + related automation.
 
-### Required IAM roles for the identity that runs the workflows
+Paths:
 
-* `roles/compute.osAdminLogin` (or `roles/compute.osLogin` if sudo is not needed)
-* `roles/iap.tunnelResourceAccessor`
+- Terraform net: `environments/packer-dev/terraform-net`
+- Packer Ansible: `environments/packer-dev/ansible`
+- Packer template: `environments/packer-dev/gcp-ubuntu-2204-iap`
 
-### Network/Firewall
+Detailed docs:
 
-* SSH only through `IAP`.
-* OS Login enabled (at project and/or VM level): `enable-oslogin = TRUE`.
+- [Terraform net README](environments/packer-dev/terraform-net/README.md)
+- [Packer Ansible README](environments/packer-dev/ansible/README.md)
+- [Terraform modules README](environments/packer-dev/terraform-net/modules/README.md)
 
-### Labels
+</details>
 
-* VMs that should be included in the inventory must have `labels.env=dev` (or whatever environment you use).
+## Branch Staging
 
-## Recommended repository structure (In progress)
-
-```bash
-environments/dev                     # (already added to merge main)
-environments/staging/ansible/
-  site.yml
-  requirements.yml
-  web/
-    index.html
-    style.css
-  files/
-    monitoring/
-      prometheus/
-        prometheus.yml                # (already in place)
-        rules/
-          alerts.yml                  # (already in place)
-      grafana/
-        provisioning/
-          datasources/
-            datasource.yml            # (already in place)
-          dashboards/
-            ejemplo.json              # (already in place)
-      template/
-        monitoring/
-          alertmanager.yml.j2         # (Template that will generate Alertmanager.yml)
-          docker-compose.yml.j2       # (Template for docker-compose.yml) 
-README.md
-README.en.md
-renovate.json
-```
-
-## How the full pipeline works
-
-1) A merge to `main` is done and `terraform-apply` runs (with environment review if applicable).
-
-2) When it finishes successfully, `inventory-and-ansible` is triggered:
-
-   * **Job 1**: generates inventory by labels and uploads an artifact.
-
-   * **Job 2**: marks artifact visibility (optional).
-
-   * **Job 3**: downloads the artifact into `ansible/` (temporary runtime dir) and invokes ansible-playbook against your hosts.
-
-   * **Job 4**: installs the required Ansible collection community.docker.
-
-3) After the inventory-and-ansible pipeline finishes:
-
-   * Installs Docker and the Docker Compose plugin on the VM.
-
-   * Copies the monitoring stack to /opt/monitoring.
-
-   * Renders the Alertmanager configuration from a template using GitHub Secrets.
-
-   * Brings up (or updates) the stack with docker compose in an idempotent way.
-
-## Folder structure in the VM
-```makefile
-/opt
-├─ monitoring/
-│  ├─ docker/                    # compose working dir
-│  │  └─ docker-compose.yml      # rendered by Ansible
-│  ├─ prometheus/
-│  │  ├─ prometheus.yml          # bind: ../prometheus/prometheus.yml -> /etc/prometheus/prometheus.yml
-│  │  └─ rules/                  # bind: ../prometheus/rules -> /etc/prometheus/rules
-│  ├─ alertmanager/
-│  │  └─ alertmanager.yml        # bind: ../alertmanager/alertmanager.yml -> /etc/alertmanager/alertmanager.yml
-│  └─ grafana/
-│     └─ provisioning/           # bind: ../grafana/provisioning -> /etc/grafana/provisioning
-│
-├─ web01/                        # bind: /opt/web01 -> /usr/share/nginx/html (web service)
-│   ├─ index.html
-│   └─ style.css
-│
-└─ Docker-managed volumes:
-    ├─ prometheus-data           # named volume for Prometheus data
-    └─ grafana-data              # named volume for Grafana data
-```  
-
-
-## Deployed stack
-
-* `prometheus`
-
-* `alertmanager`
-
-* `node-exporter`
-
-* `web(simple hosting)`
-
-* `grafana` (with Prometheus datasource preconfigured)
-
-* Basic alert rules + host health
-
-1. Install Docker + compose plugin.
-
-2. Create directories
-   * `monitoring_base_dir: /opt/monitoring`
-   * `web01_base_dir: /opt/web01`
-
-3. Copy:
-   * `docker-compose.yml` and files of Prometheus, Alertmanager and Grafana in `/opt/monitoring`.
-   *  Content from `files/web/` (HTML/CSS) to `opt/web01`.
-
-4. Lift or update the stack:
-```yaml
-community.docker.docker_compose_v2:
-  project_src: "{{ monitoring_base_dir }}"
-  state: present
-  remove_orphans: true
-```
-When the web or stack files change, the `restart monitoring stack` handler is notified to recreate the containers.
-
-## 🐳 Docker stack: docker-compose.yml
-
-Services defined in `docker-compose.yml`
-
-Path: `environments/staging/ansible/templates/monitoring/docker-compose.yml.j2`.
-
-Ansible copies this template to the VM at `{{ monitoring_base_dir }}/docker/docker-compose.yml` and brings up the stack using `community.docker.docker_compose_v2` (`project_src = {{ monitoring_base_dir }}/docker`).
-
-
-* `prometheus`-> Collect metrics  
-* `alertmanager` -> manage alerts  
-* `node-exporter` -> system metrics (CPU, RAM, Disk, Network)  
-* `grafana` -> visulization of metrics  
-* `web (Nginx)` -> the static website works from `opt/web01`  
-* `blackbox` -> check the HTTP availability of the website  
-
-It also adds good practices:
-
-**Prometheus**
-
-- Image `prom/prometheus`.
-  - Expose `9090`.
-  - Mount configuration and rules as read-only volumes.
-  - Persist data in `prometheus-data`.
-  - Healthcheck HTTP (`/-/healthy`).
-  - Resource limits: ~0.5 CPU and 1 GB of RAM.
-
-**Alertmanager**
-
-- Image `prom/alertmanager`.
-  - Expose `9093`.
-  - Configure as read-only volume from `./alertmanager/alertmanager`.
-  - Healthcheck HTTP (`/-/healthy`).
-
-**Node exporter**
-
-- Image `prom/node-exporter`.
-  - Expose `9100`.
-  - Mount `/proc`, `/sys` and `/` as read-only for read-only metrics collection.
-  - Command to use host paths (`--path.rootfs`, etc.).
-
-**grafana**
-
-- Image `grafana/grafana-oss` (to be fixed to stable version).
-  - Expose `3000`.
-  - Healthcheck HTTP (`/api/`).
-  - Admin user/password are injected from GitHub Secrets through Ansible:
-    - `GF_SECURITY_ADMIN_USER="{{ lookup('env', 'GRAFANA_ADMIN_USER') | default('admin') }}"`
-    - `GF_SECURITY_ADMIN_PASSWORD="{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('admin') }}"`
-  - Disable new user registration (`GF_USERS_ALLOW_SIGN_UP=false`).
-  - Persist data in `grafana-data`.
-  - Provisioning is mounted from `./grafana/provisioning`.
-
-**Web (Nginx)**
-
-- Image `nginx:alpine`.
-  - Expose `gg`.
-  - Serve the static portfolio from `/opt/web01` on the VM (mounted **ro**).
-
-**Blackbox**
-
-- Image `prom/blackbox-exporter`.
-  - Expose `9115`.
-  - Healthcheck HTTP (`/-/healthy`).
-  - Connects to both monitoring and web networks to probe the website.
-
-### Networks and volumes
-
-- Networks:
-  - `monitoring`: Prometheus, Alertmanager, Node Exporter, Grafana, Blackbox.
-  - `web-01`: Nginx (web) and Blackbox.
-
-- Volumes:
-  - `prometheus-data`: data for Prometheus.
-  - `grafana-data`: data for Grafana.
-
-### Good practices applied to the docker-compose.yml.j2 template
-
-- **Separation of responsibilities**: each service in its own container (Prometheus, Alertmanager, Node Exporter, Grafana, Nginx, Blackbox).    
-- **Security**:  
-  - Credentials for Grafana are managed via **GitHub Secrets + Ansible + Jinja2 template**, never in the repo.  
-  - Volume configuration is mounted as **read-only**.  
-- **Resource control**:  
-  - CPU and memory limits for Prometheus and Grafana to avoid saturating the VM.  
-- **Logging**:  
-  - Driver `json-file` with rotation (`max-size: 10m`, `max-file: 3`) to avoid filling the disk.  
-- **Observability of the stack**:  
-  - Healthchecks HTTP in Prometheus, Alertmanager, Grafana and Blackbox to detect quickly unhealthy states.
-- **Lookup('env')**:  
-  - Variables are put in the workflow using `Lookup('env')` to inject them without showing them in the selected templates, improving security.  
-
-
-## 📊 Prometheus: prometheus.yml + rules
-
-Path: `environments/staging/ansible/files/monitoring/prometheus/prometheus.yml`.
-
-Scrapes:
-
-* `prometheus:9090`
-
-* `alertmanager:9093`
-
-* `node-exporter:9100`
-
-Loads rules from `/etc/prometheus/rules/*.yml`.
-
-***Sends alerts to Alertmanager.***
-
-## Alert rules
-
-Path: `environments/staging/ansible/files/monitoring/prometheus/rules/alerts.yml`.
-
-It includes two rule groups:
-
-* `infra_basic`: general status for targets, Prometheus and Alertmanager.
-
-* `host_health`: host health based on node_exporter metrics (CPU, memory, disk, filesystem read-only, etc.).
-
-*  In addition to adding `blackbox` to monitor the website.
-    * blackbox interno:
-      * Target: `http://web:80`
-    * blackbox externo:
-      * Target: `https://Domain.com`
-
-Both jobs use `relabel_configs` to send requests to the `blackbox-exporter` in `blackbox:9115`.
-
-## 📈 Grafana: datasource provisioning
-
-Path: `environments/staging/ansible/files/monitoring/grafana/provisioning/datasources/datasource.yml`.
-
-Datasource for Prometheus created automatically when Grafana starts.
-
-Besides, Grafana uses `secrets and variables` to store the Prometheus user and password for greater security.
-
-## 📬 Alertmanager: template with SMTP and GitHub Secrets
-
-Path: `environments/staging/ansible/templates/monitoring/alertmanager.yml.j2`.
-
-Alertmanager is configured from a Jinja2 template.
-
-SMTP credentials are injected from GitHub Secrets in the Ansible workflow:
-
-## Required GitHub Secrets
-
-In Settings → `Secrets and variables` → `Actions`:
-
-* `ALERT_SMTP_SMARTHOST` → e.g. smtp.gmail.com:587
-
-* `ALERT_SMTP_FROM` → sender email
-
-* `ALERT_SMTP_USER` → SMTP user (usually the same email)
-
-* `ALERT_SMTP_PASS` → application-specific password from the email provider
-
-* `ALERT_SMTP_TO` → destination email (if omitted, ALERT_SMTP_FROM is used)
-
-* `GRAFANA_ADMIN_USER` → Grafana username.
-
-* `GRAFANA_ADMIN_PASSWORD` → Grafana admin password.
-
-The Ansible step in the workflow passes these secrets to the playbook as `-e` variables, which the template then uses to generate `alertmanager.yml` on the VM and the Grafana user and password in the `docker-compose.yml` file.
-
-
-## Ecstatic web
-
-* Nginx serves a simple portfolio page/project explanation:
-  * Infrastructure description (Terraform + GCP + Github Actions + Ansible + Docker)
-  * Youtube video embeds showing the Bootstrap/repo-Live of the infrastructure
-  * Links to the Bootstrap and Infra-Live repositories
-* HTML/CSS content lives in the repo under `environments/staging/ansible/web` and is copied to `/opt/web01` using Ansible.
-
-## Artifacts and visibility
-
-In each run of the `Ansible` workflow at the end of everything, a artifact is generated that can be downloaded from which you can connect to the VM using its real name and other ways using `IAP-Tunnel`.
-
-## Main branch infrastructure demo
-
-### Terraform workflow demo
-
-<video src="https://github.com/user-attachments/assets/bc6c77b1-89ce-4a6a-8a26-95e66cca89ec" controls muted playsinline style="max-width: 100%;"></video>
-
-### Ansible workflow demo
-
-<video src="https://github.com/user-attachments/assets/94ba4a33-5c7f-40f6-8cdd-ae9ee04fd263" controls muted playsinline style= "max-width: 100%;"></video>
-
-#### Due to changes in the image used by the workflow, I had to switch it and add several improvements to keep stability and correct version control.
-
-- `manifest unknown` when pulling `ghcr.io/googlecloudplatform/cloud-sdk:latest` -> switched to a valid image in `gcr.io` and pinned its digest.
-- Incorrect digest (config digest) -> replaced with a valid `manifest digest`.
-- `set: Illegal option -o pipefail` -> force `shell: bash` in the jobs.
-- `sudo: command not found` due to the container image change -> removed sudo.
-- Compatibility error: `community.docker` vs Ansible 2.10 -> upgraded Ansible/ansible-core.
-- `No matching distribution found for ansible==12.3.0` -> that version does not exist on PyPI.
-- `No matching distribution found for ansible-core==2.17.*` -> Python too old in the image; switched to a newer image.
-- `ERROR: externally-managed-environment` (PEP 668) -> installed Ansible in a venv.
-- `Could not parse resource []` when starting VMs -> fixed parsing of `name/zone` with `zone.basename()` + `IFS=$'\t'`.
-
-This series of errors and changes happened because of the container image switch; now the workflow is more structured and dynamic.
-
-### Full docker compose snapshot
-
-Here we show the Docker container.  
-<img width="1059" height="104" alt="Image" src="https://github.com/user-attachments/assets/f4c325c2-a145-4dfc-9da4-9855264f2d47"></img>
-
-## Secure VM Access without Public IP (IAP + VS Code Remote-SSH)
-
-This VM (`dev-oslogin-ubuntu`, `europe-west1-b`) has **no public IP**.  
-Access is done only via:
-
-- **IAP (Identity-Aware Proxy)**
-- **SSH** using a `ProxyCommand` that calls `gcloud` in WSL
-- **VS Code Remote-SSH**
-- **Port forwarding** for Nginx / Prometheus / Grafana
-
----
-
-## 1. Requirements
-
-### Local (Windows + WSL)
-
-- Windows 10/11 with **OpenSSH Client**.
-- **VS Code** + **Remote - SSH** extension.
-- **WSL2 Ubuntu** with:
-  - Google Cloud SDK (`gcloud`) installed.
-  - Project configured:
-    ```bash
-    gcloud auth login
-    gcloud config set project NAME-Project
-    ```
-  - SSH key created by `gcloud`:
-    `/home/Users/.ssh/google_compute_engine`
-
-Copy the key from WSL to Windows:
-
-```bash
-mkdir -p /mnt/c/Users/USER/.ssh
-cp /home/USER/.ssh/google_compute_engine \
-   /mnt/c/Users/USER/.ssh/google_compute_engine
-```
-### GCP
-
-  - Projet: `Name-Project`
-  - VM: `Name-VM`
-  - IAP enabled + the local user´s Google account has IAP/SSH permissions.
-
-## 2. SSH Configuration on Windows
-
-files: `C:\Users\USUARIO\.ssh\config`
-
-```sshconfig
-Host gcp-dev-iap
-    HostName compute.NUMBERFORDRYRUN
-    User USERS
-
-    IdentityFile C:/Users/USUARIO/.ssh/google_compute_engine
-    IdentitiesOnly yes
-
-    # IAP tunnel using gcloud in WSL
-    ProxyCommand wsl /home/USER/google-cloud-sdk/platform/bundledpythonunix/bin/python3 /home/USER/google-cloud-sdk/lib/gcloud.py compute start-iap-tunnel dev-oslogin-ubuntu %p --listen-on-stdin --project=gcloud-live-dev --zone=europe-west1-b --verbosity=warning
-
-    # Local HTTP forwards
-    LocalForward 8080 localhost:80      # Nginx / web
-    LocalForward 9090 localhost:9090    # Prometheus
-    LocalForward 3000 localhost:3000    # Grafana
-```
-> - HostName compute.NUMBER comes from
->   - gcloud compute ssh NAME-VM --tunnel-through-iap --dry-run.
-
-## 3. Test SSH connection
-
-In powershell
-```bash
-ssh gcp-dev-iap
-```
-If it works you should see:
-```bash
-USERS@compute.NUMBER:~$
-```
-
-While this session is open:
-
-- `http://localhost:8080` → Nginx.
-- `http://localhost:9090` → Prometheus.
-- `http://localhost:3000` → Grafana.
-
-## 4. Using VS Code Remote-SSH
-
-  1. Open VS Code
-  2. Ctrl+Shift+P
-  3. Type: `Remote-SSH: Connect to Host`
-  4. VS Code will install the ***VS Code Server*** on the VM (First time only)
-  5. Bottom-left should show: `SSH: gcp-dev-iap`
-  6. `Terminal -> New Terminal` -> expected prompt.
-  ```bash
-  USERS@compute.NUMBER:~$
-  ```
- From here:
-
- - You edit files directly on the VM.
- - You use the remote terminal for `docker`, logs, etc.
- - Services are reachable via `localhost:8080/9090/3000` without exposing the VM to the internet.
-
-## 5. Quick troubleshooting
-
-- If Remote-SSH gets stuck:
-  - On the VM:
-```bash
-  rm -rf ~/.vscode-server
-```
-The reconnect from VS Code.
-
-- Make suer `curl`/`wget`exist on the VM so VS Code can download the server:
-```bash
-sudo apt update
-sudo apt install -y curl wget
-```
-
-This documents the pattern: ***VM with no public IP + IAP + VS Code Remote-SSH + Local tunnels to internal services***.
-
-
-## Local validation (WSL)
-
-Tools used to validate configuration before deploying:
-
-* Ansible
-  * `ansible-playbook site.yml --syntax-check`
-
-* Prometheus
-   * `promtool check config files/monitoring/prometheus/prometheus.yml`
-   * `promtool check rules files/monitoring/prometheus/rules/alerts.yml`
-
-* Docker-compose
-   * `docker-compose config` (since `files/monitoring/docker`)
-
-* YAML linting
-   * `yamllint` about `prometheus.yml`and `alerts.yml` to clean spaces and comments
-
-## Terraform Promotion Flow (`feat/dev` → `main`)
-
-In this repo we use branches like this:
-
-- `main` → **LIVE / production** branch.  
-- `feat/dev` → **development and testing** branch (Terraform, workflows, README, etc.).  
-- Branches like `feat/tf-...` → **temporary promotion branches**, used only to bring Terraform changes from `feat/dev` into `main`.
-
-The idea is:
-
-> In `feat/dev` I can change anything.  
-> Only the Terraform changes I explicitly choose are promoted to `main`, through a promotion branch.
-
----
-
-### Steps to promote Terraform changes to `main`
-
-We assume the `.tf` files live in `environments/dev`.
-
-1. **Work normally in `feat/dev`**
-
-   - Edit Terraform under `environments/dev`.
-   - Test, validate, run `terraform plan`, etc.
-   - Commit and `git push` to `feat/dev` until the infra is ready.
-
-2. **When the Terraform changes are ready for production**
-
-   Create a clean promotion branch from `main`:
-
-   ```bash
-   # 1) Go to main and update
-   git checkout main
-   git pull origin main
-
-   # 2) Create a promotion branch (example name)
-   git checkout -b feat/tf-update-<description>
-
-Pull in only the Terraform folder from feat/dev:
-```
-git checkout feat/dev -- environments/dev
-```
-
-Check what changed:
-```bash
-git status
-```
-→ You should only see files under `environments/dev` as modified.
-
-Commit and push the branch:
-```bash
-git add environments/dev
-git commit -m "Update Terraform from feat/dev`
-git push origin feat/tf-update-<description>
-```
-
-3. **Create the Pull Request to main**
-
-   - Open a PR: `feat/tf-update-<description> → main`.
-   - Review the diff: only files under `environments/dev` should appear.
-   - Let the workflows run (lint, plan, etc.).
-   - If everything is OK → Merge into `main`.
-
-4. **Clean up the promotion branch (optional but recommended)**
-
-Once the PR is merged:
-
-```bash
-# Delete the branch locally
-git branch -d feat/tf-update-<description>
-
-# Delete the branch on remote (GitHub)
-git push origin --delete feat/tf-update-<description>
-```
-
-## Why not use `feat/dev → main` directly?
-
-A PR from `feat/dev → main` would include all changes on that branch (README, workflows, experiments, etc.), not just Terraform.
-
-With this flow:
-
-* `feat/dev` remains a workshop branch where you can change anything.
-* `main only receives`, via promotion branches (feat/tf-...),
-the Terraform changes that are already ready for production.
-
-## Artifacts and visibility
-
-* Inventory and cfg are stored as an artifact:
-`ansible-inventory-env` → `ansible/hosts.ini`, `ansible/ansible.cfg` (temporary runtime artifacts)
-
-* You can download it from the **Actions** tab of the corresponding run.
-
-## Best practices we follow
-
-* No SSH keys or public port 22: access via OS Login + IAP.
-
-* Ephemeral (on-the-fly) inventory and no IPs (only GCE FQDNs).
-
-* Workflow concurrency to avoid overlaps.
-
-* Separate jobs for maximum visibility (generate → publish → apply).
+`The staging branch` will be updated periodically to show current and old changes to improve documentation. This branch is for `tests`, `validations`, `continuous improvements`, provider updates, optimizations and real scalability while maintaining `FinOps` focus.

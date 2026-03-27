@@ -2,6 +2,7 @@ services:
   prometheus:
     # prom/prometheus:v2.53.1
     image: prom/prometheus:v2.53.1
+    pull_policy: if_not_present
     container_name: prometheus
     restart: unless-stopped
     ports:
@@ -37,6 +38,7 @@ services:
   alertmanager:
     # prom/alertmanager:v0.27.0
     image: prom/alertmanager:v0.27.0
+    pull_policy: if_not_present
     container_name: alertmanager
     restart: unless-stopped
     ports:
@@ -61,6 +63,7 @@ services:
   node-exporter:
     # prom/node-exporter:v1.7.0
     image: prom/node-exporter:v1.7.0
+    pull_policy: if_not_present
     container_name: node-exporter
     restart: unless-stopped
     ports:
@@ -87,6 +90,7 @@ services:
   grafana:
     # grafana/grafana:10.4.3
     image: grafana/grafana:10.4.3
+    pull_policy: if_not_present
     container_name: grafana
     restart: unless-stopped
     ports:
@@ -125,6 +129,7 @@ services:
   web:
     # nginx:1.25-alpine
     image: nginx:1.25-alpine
+    pull_policy: if_not_present
     container_name: portfolio-web
     ports:
       - "80:80"     # PUerto por el que escuchara Nginx
@@ -144,6 +149,7 @@ services:
   blackbox:
     # prom/blackbox-exporter:v0.24.0
     image: prom/blackbox-exporter:v0.24.0
+    pull_policy: if_not_present
     container_name: blackbox-exporter
     ports:
       - "9115:9115"
