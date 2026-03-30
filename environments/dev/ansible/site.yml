@@ -2,6 +2,7 @@
 - name: Configurar stack de monitoring (Web + Prometheus + Alertmanager + Grafana)
   hosts: all
   become: true
+  gather_facts: true
 
   vars:
     monitoring_base_dir: /opt/monitoring

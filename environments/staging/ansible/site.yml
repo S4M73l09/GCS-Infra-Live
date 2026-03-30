@@ -1,0 +1,108 @@
+---
+- name: Configurar stack de monitoring (Web + Prometheus + Alertmanager + Grafana)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    monitoring_base_dir: /opt/monitoring
+    web01_base_dir: /opt/web01
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+
+    - name: Importar clave GPG de Docker
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Añadir repositorio de Docker
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+        state: present
+
+    - name: Instalar Docker y plugin Compose
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Asegurar que Docker está activo
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Crear carpeta base de monitoring
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Crear carpeta docker para monitoring
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}/docker"
+        state: directory
+        mode: "0755"
+
+    - name: Crear carpeta base de web
+      ansible.builtin.file:
+        path: "{{ web01_base_dir  }}"
+        state: directory
+        mode: "0755"
+
+    - name: Plantilla de docker-compose.yml para monitoring
+      ansible.builtin.template:
+        src: templates/monitoring/docker-compose.yml.j2
+        dest: "{{ monitoring_base_dir }}/docker/docker-compose.yml"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar configuración de Prometheus
+      ansible.builtin.copy:
+        src: files/monitoring/prometheus/
+        dest: "{{ monitoring_base_dir }}/prometheus/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar archivos nginx web
+      ansible.builtin.copy:
+       src: web/
+       dest: "{{ web01_base_dir }}/"
+       mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Crear carpeta de Alertmanager
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}/alertmanager"
+        state: directory
+        mode: "0755"
+
+    - name: Plantilla de configuracion de Alertmanager
+      ansible.builtin.template:
+        src: templates/monitoring/alertmanager.yml.j2
+        dest: "{{ monitoring_base_dir }}/alertmanager/alertmanager.yml"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar provisioning de Grafana
+      ansible.builtin.copy:
+        src: files/monitoring/grafana/
+        dest: "{{ monitoring_base_dir }}/grafana/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Asegurar que el stack de monitoring está levantado
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_base_dir }}/docker"
+        state: present
+        remove_orphans: true
+
+  handlers:
+    - name: restart monitoring stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_base_dir }}/docker"
+        state: present
+        remove_orphans: true
