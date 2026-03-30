@@ -4,17 +4,18 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 on:
   push:
-    branches: ["staging"]
+    branches: ["main"]
     paths:
-      - "environments/staging/**"
-      - "environments/staging/modules/**"
+      - "environments/dev/**"
+      - "environments/global/**"
+      - "environments/dev/modules/**"
       - ".github/workflows/Apply-Live.yaml"
   workflow_dispatch:
     inputs:
       env_dir:
-        description: 'Environment to apply (allowed: staging)'
+        description: 'Environment to apply (allowed: dev)'
         required: false
-        default: 'staging'
+        default: 'dev'
       force_apply:
         description: 'Force Terraform plan/apply even if no tracked files changed'
         required: false
@@ -67,19 +68,17 @@ jobs:
           # Si se lanzó manual con input, validarlo estrictamente
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
             case "${{ inputs.env_dir }}" in
-              staging)
-                ENV="environments/staging"
+              dev)
+                ENV="environments/dev"
                 ;;
               *)
-                echo "Invalid env_dir='${{ inputs.env_dir }}'. Only 'staging' is allowed in this workflow." >&2
+                echo "Invalid env_dir='${{ inputs.env_dir }}'. Only 'dev' is allowed in this workflow." >&2
                 exit 1
                 ;;
             esac
           else
             # Entorno fijo por rama (evita sobrescritura incorrecta)
-            if [[ "${{ github.ref_name }}" == "staging" ]]; then
-              ENV="environments/staging"
-            elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            if [[ "${{ github.ref_name }}" == "main" ]]; then
               ENV="environments/dev"
             fi
 
@@ -254,7 +253,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "--- machine_type from tfplan.bin ---"
-          terraform show -no-color tfplan.bin | grep -E 'machine_type|name\s*=\s*"staging-oslogin-ubuntu"' -n || true
+          terraform show -no-color tfplan.bin | grep -E 'machine_type|name\s*=\s*"' -n || true
 
       - name: Terraform Apply (approved plan)
         working-directory: ${{ needs.changes.outputs.dir }}
@@ -264,8 +263,7 @@ jobs:
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform output -json > outputs.json
 
-      - name: Read dynamic vm_zone (staging only)
-        if: ${{ needs.changes.outputs.env == 'staging' }}
+      - name: Read dynamic vm_zone
         id: vm_zone
         working-directory: ${{ needs.changes.outputs.dir }}
         shell: bash
@@ -288,8 +286,7 @@ jobs:
           path: ${{ needs.changes.outputs.dir }}/outputs.json
           retention-days: 3
 
-      - name: Upload vm_zone artifact (staging only)
-        if: ${{ needs.changes.outputs.env == 'staging' }}
+      - name: Upload vm_zone artifact
         uses: actions/upload-artifact@v4
         with:
           name: applied-vm-zone
@@ -302,14 +299,10 @@ jobs:
           {
             echo "## Terraform Apply summary"
             echo "- Environment: ${{ needs.changes.outputs.env }}"
-            if [ "${{ needs.changes.outputs.env }}" = "staging" ]; then
-              if [ -n "${{ steps.vm_zone.outputs.vm_zone }}" ]; then
-                echo "- vm_zone (dynamic output): ${{ steps.vm_zone.outputs.vm_zone }}"
-              else
-                echo "- vm_zone (dynamic output): not found"
-              fi
+            if [ -n "${{ steps.vm_zone.outputs.vm_zone }}" ]; then
+              echo "- vm_zone (dynamic output): ${{ steps.vm_zone.outputs.vm_zone }}"
             else
-              echo "- vm_zone: skipped (only staging)"
+              echo "- vm_zone (dynamic output): not found"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

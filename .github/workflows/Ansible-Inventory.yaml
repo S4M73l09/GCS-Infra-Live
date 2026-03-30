@@ -10,10 +10,10 @@ on:
       env:
         description: "Environment label (e.g. dev)"
         required: false
-        default: "staging"
+        default: "dev"
   workflow_run:
     workflows: ["terraform-apply"] # nombres del workflow de apply
-    branches: [staging]
+    branches: [main]
     types: [completed]
 
 permissions:
@@ -411,13 +411,13 @@ jobs:
           path: |
             ~/.ansible/collections
             ~/.cache/pip
-          key: ansible-cache-${{ runner.os }}-core217-${{ hashFiles('environments/staging/ansible/requirements.yml', 'environments/staging/ansible/requirements.txt') }}
+          key: ansible-cache-${{ runner.os }}-core217-${{ hashFiles('environments/dev/ansible/requirements.yml', 'environments/dev/ansible/requirements.txt') }}
           restore-keys: |
             ansible-cache-${{ runner.os }}-core217-
             ansible-cache-${{ runner.os }}-
 
       - name: Install Ansible Collections
-        run: ansible-galaxy collection install -r environments/staging/ansible/requirements.yml
+        run: ansible-galaxy collection install -r environments/dev/ansible/requirements.yml
 
       - name: Run Ansible
         env:
@@ -429,7 +429,7 @@ jobs:
           ALERTMANAGER_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
           GRAFANA_ADMIN_USER:         ${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-        run: ansible-playbook -i ansible-runtime/hosts.ini environments/staging/ansible/site.yml
+        run: ansible-playbook -i ansible-runtime/hosts.ini environments/dev/ansible/site.yml
 
       - name: Cleanup ephemeral SSH key from instances
         if: always()
