@@ -1,19 +1,19 @@
 name: terraform-apply
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 on:
   push:
     branches: ["main"]
     paths:
-      - "environments/**"
-      - "modules/**"
-      - "**/*.tf"
-      - "**/*.tfvars"
-      - "**/.tflint.hcl"
+      - "environments/dev/**"
+      - "environments/global/**"
+      - "environments/dev/modules/**"
       - ".github/workflows/Apply-Live.yaml"
   workflow_dispatch:
     inputs:
       env_dir:
-        description: 'Environment to apply (folder under environments/)'
+        description: 'Environment to apply (allowed: dev)'
         required: false
         default: 'dev'
       force_apply:
@@ -65,23 +65,23 @@ jobs:
           # Default seguro
           ENV="environments/dev"
 
-          # Si se lanzó manual con input, úsalo
+          # Si se lanzó manual con input, validarlo estrictamente
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.env_dir }}" ]]; then
-            ENV="environments/${{ inputs.env_dir }}"
+            case "${{ inputs.env_dir }}" in
+              dev)
+                ENV="environments/dev"
+                ;;
+              *)
+                echo "Invalid env_dir='${{ inputs.env_dir }}'. Only 'dev' is allowed in this workflow." >&2
+                exit 1
+                ;;
+            esac
           else
-            # Auto-detect por rama (staging/main)
-            if [[ "${{ github.ref_name }}" == "staging" ]]; then
-              ENV="environments/staging"
-            elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            # Entorno fijo por rama (evita sobrescritura incorrecta)
+            if [[ "${{ github.ref_name }}" == "main" ]]; then
               ENV="environments/dev"
             fi
 
-            # Deducir primer entorno tocado respecto a main (no crítico, pero ayuda)
-            changed_env="$(git diff --name-only "origin/main~1" "origin/main" 2>/dev/null \
-              | awk -F/ '/^environments\//{print $1"/"$2}' | sort -u | head -n1 || true)"
-            if [[ -n "$changed_env" ]]; then
-              ENV="$changed_env"
-            fi
           fi
 
           ENV_NAME="$(basename "$ENV")"
@@ -118,10 +118,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Terraform 1.9.7
+      - name: Setup Terraform 1.13.5
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.7"
+          terraform_version: "1.13.5"
           terraform_wrapper: false
 
       - name: Google Auth (OIDC)
@@ -134,9 +134,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.terraform.d/plugin-cache
-          key: tf-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          key: tf-${{ runner.os }}-${{ hashFiles(format('{0}/.terraform.lock.hcl', needs.changes.outputs.dir)) }}
           restore-keys: |
             tf-${{ runner.os }}-
+
+      - name: Cache TFlint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ runner.os }}-${{ hashFiles('**/.tflint.hcl') }}
+          restore-keys: |
+            tflint-${{ runner.os }}-
 
       - name: Configure TF plugin cache
         run: |
@@ -146,6 +154,26 @@ jobs:
       - name: Terraform Init (readonly lockfile)
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform init -input=false -lockfile=readonly
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint init + lint
+        working-directory: ${{ needs.changes.outputs.dir }}
+        run: |
+          tflint --init
+          tflint -f compact
+
+      - name: Debug Terraform inputs (machine type)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PWD=$(pwd)"
+          echo "--- terraform.tfvars (first 60 lines) ---"
+          sed -n '1,60p' terraform.tfvars || true
+          echo "--- local.vm_machine_type ---"
+          terraform console <<< 'local.vm_machine_type'
 
       - name: Terraform Plan (save)
         id: planfile
@@ -173,7 +201,7 @@ jobs:
   approve_gate:
     name: Await approval (${{ needs.changes.outputs.env }})
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [changes, plan]
     if: needs.changes.outputs.tf == 'true' || needs.changes.outputs.force == 'true'
     environment:
       name: ${{ needs.changes.outputs.env }}     # crea Environments (p.ej. prod/dev) con Required reviewers
@@ -197,10 +225,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Terraform 1.9.7
+      - name: Setup Terraform 1.13.5
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "1.9.7"
+          terraform_version: "1.13.5"
           terraform_wrapper: false
 
       - name: Google Auth (OIDC)
@@ -219,6 +247,14 @@ jobs:
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform init -input=false -lockfile=readonly -reconfigure
 
+      - name: Debug tfplan machine type (before apply)
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "--- machine_type from tfplan.bin ---"
+          terraform show -no-color tfplan.bin | grep -E 'machine_type|name\s*=\s*"' -n || true
+
       - name: Terraform Apply (approved plan)
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform apply -input=false -lock-timeout=5m tfplan.bin
@@ -227,6 +263,22 @@ jobs:
         working-directory: ${{ needs.changes.outputs.dir }}
         run: terraform output -json > outputs.json
 
+      - name: Read dynamic vm_zone
+        id: vm_zone
+        working-directory: ${{ needs.changes.outputs.dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if terraform output -raw vm_zone > vm_zone.txt 2>/dev/null; then
+            ZONE="$(cat vm_zone.txt)"
+            echo "vm_zone=${ZONE}" >> "$GITHUB_OUTPUT"
+            echo "Detected vm_zone: ${ZONE}"
+          else
+            echo "vm_zone=" >> "$GITHUB_OUTPUT"
+            echo "No vm_zone output in this environment (expected for some stacks like global)."
+            : > vm_zone.txt
+          fi
+
       - name: Upload terraform outputs
         uses: actions/upload-artifact@v4
         with:
@@ -234,14 +286,34 @@ jobs:
           path: ${{ needs.changes.outputs.dir }}/outputs.json
           retention-days: 3
 
+      - name: Upload vm_zone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: applied-vm-zone
+          path: ${{ needs.changes.outputs.dir }}/vm_zone.txt
+          retention-days: 1
+
+      - name: Summary (dynamic zone)
+        shell: bash
+        run: |
+          {
+            echo "## Terraform Apply summary"
+            echo "- Environment: ${{ needs.changes.outputs.env }}"
+            if [ -n "${{ steps.vm_zone.outputs.vm_zone }}" ]; then
+              echo "- vm_zone (dynamic output): ${{ steps.vm_zone.outputs.vm_zone }}"
+            else
+              echo "- vm_zone (dynamic output): not found"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ──────────────────────────────────────────────────────────────
   # 4) Publicar artefacto con el nombre del entorno
   # ──────────────────────────────────────────────────────────────
   publish-env-artifact:
     name: Publish env artifact
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: ${{ needs.changes.result == 'success' }}
+    needs: [changes, apply]
+    if: ${{ (needs.changes.outputs.tf == 'true' || needs.changes.outputs.force == 'true') && needs.apply.result == 'success' }}
     steps:
       - name: Save environment name
         run: echo "${{ needs.changes.outputs.env }}" > env.txt

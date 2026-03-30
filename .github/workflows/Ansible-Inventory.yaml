@@ -3,12 +3,16 @@ name: Ansible-Inventory
 on:
   workflow_dispatch:
     inputs:
+      debug_mode:
+        description: "Activar pasos debug"
+        required: false
+        default: "false"
       env:
         description: "Environment label (e.g. dev)"
         required: false
         default: "dev"
   workflow_run:
-    workflows: ["terraform-apply"] # nombre exacto del workflow de apply
+    workflows: ["terraform-apply"] # nombres del workflow de apply
     branches: [main]
     types: [completed]
 
@@ -67,10 +71,10 @@ jobs:
     container:
       image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5 # Digest del manifiesto de la versión 550.0.0
     steps:
-      - name: Checkout main
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 0
 
       - name: Auth GCP (OIDC)
@@ -84,8 +88,8 @@ jobs:
       - name: Generate ephemeral SSH keypair
         run: |
           set -euo pipefail
-          mkdir -p ansible
-          SSH_KEY_PATH="ansible/gha_ansible"
+          mkdir -p ansible-runtime
+          SSH_KEY_PATH="ansible-runtime/gha_ansible"
           if [ -f "${SSH_KEY_PATH}" ]; then
             rm -f "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
           fi
@@ -111,7 +115,7 @@ jobs:
             echo "OS Login user not found in profile" >&2
             exit 1
           fi
-          echo "${SSH_USER}" > ansible/ssh_user.txt
+          echo "${SSH_USER}" > ansible-runtime/ssh_user.txt
           echo "ANSIBLE_SSH_USER=${SSH_USER}" >> "$GITHUB_ENV"
 
 
@@ -176,7 +180,7 @@ jobs:
           GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
         run: |
           set -euo pipefail
-          mkdir -p ansible
+          mkdir -p ansible-runtime
           
           ENV_VALUE="${{ needs.resolve-env.outputs.env }}"
           echo "Using env label value: '${ENV_VALUE}'"
@@ -185,14 +189,14 @@ jobs:
             --project="${GCP_PROJECT}" \
             --filter="labels.env=${ENV_VALUE} AND status=RUNNING" \
             --format="value(name,zone.basename())" \
-            > ansible/hosts_with_zones.list
+            > ansible-runtime/hosts_with_zones.list
 
-          cut -f1 ansible/hosts_with_zones.list > ansible/hosts.list || true
+          cut -f1 ansible-runtime/hosts_with_zones.list > ansible-runtime/hosts.list || true
 
-          echo "=== ansible/hosts.list ==="
-          cat ansible/hosts.list || echo "NO INSTANCES FOUND"
-          echo "=== ansible/hosts_with_zones.list ==="
-          cat ansible/hosts_with_zones.list || echo "NO INSTANCES WITH ZONE"
+          echo "=== ansible-runtime/hosts.list ==="
+          cat ansible-runtime/hosts.list || echo "NO INSTANCES FOUND"
+          echo "=== ansible-runtime/hosts_with_zones.list ==="
+          cat ansible-runtime/hosts_with_zones.list || echo "NO INSTANCES WITH ZONE"
 
       - name: Warm up SSH access via IAP
         env:
@@ -202,7 +206,7 @@ jobs:
           : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
           : "${ANSIBLE_SSH_USER:?ANSIBLE_SSH_USER is required}"
 
-          if [ ! -s ansible/hosts_with_zones.list ]; then
+          if [ ! -s ansible-runtime/hosts_with_zones.list ]; then
             echo "No hosts to warm up."
             exit 0
           fi
@@ -220,7 +224,7 @@ jobs:
 
             ZONE_ARG=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
             echo "Warming up SSH access for ${INSTANCE_NAME} (${ZONE_ARG})"
-            for attempt in $(seq 1 5); do
+            for attempt in $(seq 1 4); do
               if ssh \
                 -i "${ANSIBLE_SSH_KEY_PATH}" \
                 -o StrictHostKeyChecking=no \
@@ -232,15 +236,15 @@ jobs:
                 break
               fi
 
-              if [ "$attempt" -eq 5 ]; then
-                echo "ERROR: SSH warm-up failed for ${INSTANCE_NAME} after 5 attempts"
+              if [ "$attempt" -eq 4 ]; then
+                echo "ERROR: SSH warm-up failed for ${INSTANCE_NAME} after 4 attempts"
                 exit 1
               fi
 
               echo "Retrying SSH warm-up for ${INSTANCE_NAME} (attempt $((attempt + 1)))"
-              sleep 5
+              sleep $((attempt * 2))
             done
-          done < ansible/hosts_with_zones.list
+          done < ansible-runtime/hosts_with_zones.list
 
       - name: Generate Ansible inventory (env=${{ needs.resolve-env.outputs.env }})
         env:
@@ -250,7 +254,7 @@ jobs:
           : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
           : "${ANSIBLE_SSH_USER:?ANSIBLE_SSH_USER is required}"
 
-          if [ ! -s ansible/hosts_with_zones.list ]; then
+          if [ ! -s ansible-runtime/hosts_with_zones.list ]; then
             echo "ERROR: hosts_with_zones.list is empty."
             exit 1
           fi
@@ -275,38 +279,39 @@ jobs:
                 "$ANSIBLE_SSH_USER" \
                 "${ANSIBLE_SSH_KEY_PATH}" \
                 "$SSH_ARGS"
-            done < ansible/hosts_with_zones.list
-          } > ansible/hosts.ini
+            done < ansible-runtime/hosts_with_zones.list
+          } > ansible-runtime/hosts.ini
 
           printf "%s\n" \
             "[defaults]" \
             "host_key_checking = False" \
-            > ansible/ansible.cfg
+            > ansible-runtime/ansible.cfg
 
-          if ! grep -q 'ansible_host=' ansible/hosts.ini; then
+          if ! grep -q 'ansible_host=' ansible-runtime/hosts.ini; then
             echo "ERROR: No hosts rendered into hosts.ini"
-            cat ansible/hosts.ini || true
+            cat ansible-runtime/hosts.ini || true
             exit 1
           fi
       - name: Debug inventory after generation
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_mode == 'true' }}
         run: |
-          echo "=== ansible/hosts.list ==="
-          cat ansible/hosts.list || echo "NO hosts in hosts.list"
+          echo "=== ansible-runtime/hosts.list ==="
+          cat ansible-runtime/hosts.list || echo "NO hosts in hosts.list"
 
-          echo "=== ansible/hosts.ini ==="
-          cat ansible/hosts.ini 
+          echo "=== ansible-runtime/hosts.ini ==="
+          cat ansible-runtime/hosts.ini 
 
       - name: Upload inventory artifact
         uses: actions/upload-artifact@v4
         with:
           name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
           path: |
-            ansible/hosts.ini
-            ansible/ansible.cfg
-            ansible/gha_ansible
-            ansible/gha_ansible.pub
-            ansible/ssh_user.txt
-            ansible/hosts_with_zones.list
+            ansible-runtime/hosts.ini
+            ansible-runtime/ansible.cfg
+            ansible-runtime/gha_ansible
+            ansible-runtime/gha_ansible.pub
+            ansible-runtime/ssh_user.txt
+            ansible-runtime/hosts_with_zones.list
           retention-days: 10
 
   # ──────────────────────────────────────────────────────────────
@@ -322,10 +327,10 @@ jobs:
     container:
       image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5 # Manifiesto digest de la versión 550.0.0
     steps:
-      - name: Checkout main
+      - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.ref_name }}
           fetch-depth: 0
 
       - name: Auth GCP (OIDC)
@@ -337,6 +342,7 @@ jobs:
           export_environment_variables: true
 
       - name: (DEBUG) List all instances in project
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_mode == 'true' }}
         run: |
           echo "Listing all instances in project ${{ vars.GCP_INFRA_PROJECT_ID }}..."
           gcloud compute instances list --project=${{ vars.GCP_INFRA_PROJECT_ID }}
@@ -354,8 +360,8 @@ jobs:
         continue-on-error: true
 
       - name: Check generated SSH config
-        # Solo ejecuta si el paso anterior fue 'success'
-        if: ${{ steps.prepare_ssh.outcome == 'success' }}
+        # Solo ejecuta si el paso anterior fue 'success' }}
+        if: ${{ steps.prepare_ssh.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.debug_mode == 'true' }}
         run: |
           echo "=== check generated SSH config ==="
 
@@ -376,18 +382,18 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
-          path: ansible
+          path: ansible-runtime
 
       - name: Prepare downloaded SSH key
         run: |
           set -euo pipefail
-          if [ ! -f ansible/gha_ansible ]; then
+          if [ ! -f ansible-runtime/gha_ansible ]; then
             echo "Missing SSH private key in artifact"
             exit 1
           fi
-          chmod 600 ansible/gha_ansible
-          if [ -f ansible/ssh_user.txt ]; then
-            SSH_USER=$(cat ansible/ssh_user.txt)
+          chmod 600 ansible-runtime/gha_ansible
+          if [ -f ansible-runtime/ssh_user.txt ]; then
+            SSH_USER=$(cat ansible-runtime/ssh_user.txt)
             echo "ANSIBLE_SSH_USER=${SSH_USER}" >> "$GITHUB_ENV"
           fi
 
@@ -405,16 +411,17 @@ jobs:
           path: |
             ~/.ansible/collections
             ~/.cache/pip
-          key: ansible-cache-${{ runner.os }}-${{ hashFiles('ansible/requirements.yml') }}
+          key: ansible-cache-${{ runner.os }}-core217-${{ hashFiles('environments/dev/ansible/requirements.yml', 'environments/dev/ansible/requirements.txt') }}
           restore-keys: |
+            ansible-cache-${{ runner.os }}-core217-
             ansible-cache-${{ runner.os }}-
 
       - name: Install Ansible Collections
-        run: ansible-galaxy collection install -r ansible/requirements.yml
+        run: ansible-galaxy collection install -r environments/dev/ansible/requirements.yml
 
       - name: Run Ansible
         env:
-          ANSIBLE_CONFIG: ansible/ansible.cfg
+          ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
           ALERTMANAGER_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
           ALERTMANAGER_SMTP_FROM:      ${{ secrets.ALERT_SMTP_FROM }}
           ALERTMANAGER_SMTP_USER:      ${{ secrets.ALERT_SMTP_USER }}
@@ -422,7 +429,7 @@ jobs:
           ALERTMANAGER_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
           GRAFANA_ADMIN_USER:         ${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-        run: ansible-playbook -i ansible/hosts.ini ansible/site.yml
+        run: ansible-playbook -i ansible-runtime/hosts.ini environments/dev/ansible/site.yml
 
       - name: Cleanup ephemeral SSH key from instances
         if: always()
@@ -441,12 +448,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
-          path: ansible
+          path: ansible-runtime
 
       - name: Build tunnel instructions
         run: |
           set -euo pipefail
-          HOST_LINE=$(head -n1 ansible/hosts_with_zones.list || true)
+          HOST_LINE=$(head -n1 ansible-runtime/hosts_with_zones.list || true)
           HOST=$(echo "$HOST_LINE" | awk '{print $1}')
           ZONE=$(echo "$HOST_LINE" | awk '{print $2}')
 
