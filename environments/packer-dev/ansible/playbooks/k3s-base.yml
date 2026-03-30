@@ -1,0 +1,26 @@
+- name: Base Kubernetes objects
+  hosts: k3s
+  become: false
+  gather_facts: false
+  tasks:
+    - name: Ensure kube-system namespace exists
+      kubernetes.core.k8s:
+        kubeconfig: /tmp/k3s-runtime-kubeconfig.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: kube-system
+      delegate_to: localhost
+
+    - name: Ensure apps-staging namespace exists
+      kubernetes.core.k8s:
+        kubeconfig: /tmp/k3s-runtime-kubeconfig.yaml
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: apps-staging
+      delegate_to: localhost

@@ -1,0 +1,5 @@
+k3s_service_name: k3s
+k3s_kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+kubeconfig_local_path: /tmp/k3s-runtime-kubeconfig.yaml
+k3s_api_wait_retries: 20
+k3s_api_wait_delay: 15

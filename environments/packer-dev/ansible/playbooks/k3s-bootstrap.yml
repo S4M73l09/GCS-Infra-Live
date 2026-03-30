@@ -1,0 +1,36 @@
+- name: Bootstrap k3s runtime
+  hosts: k3s
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Enable and start k3s
+      ansible.builtin.systemd:
+        name: "{{ k3s_service_name }}"
+        enabled: true
+        state: started
+
+    - name: Wait for k3s API
+      ansible.builtin.command: k3s kubectl get nodes
+      register: k3s_nodes
+      retries: "{{ k3s_api_wait_retries }}"
+      delay: "{{ k3s_api_wait_delay }}"
+      until: k3s_nodes.rc == 0
+      changed_when: false
+
+    - name: Wait for kubeconfig file
+      ansible.builtin.wait_for:
+        path: "{{ k3s_kubeconfig_path }}"
+        timeout: 120
+
+    - name: Read kubeconfig from node
+      ansible.builtin.slurp:
+        src: "{{ k3s_kubeconfig_path }}"
+      register: k3s_cfg_raw
+
+    - name: Save kubeconfig on runner
+      ansible.builtin.copy:
+        dest: "{{ kubeconfig_local_path }}"
+        mode: "0600"
+        content: "{{ (k3s_cfg_raw.content | b64decode) | regex_replace('127.0.0.1', hostvars[inventory_hostname].ansible_default_ipv4.address) }}"
+      delegate_to: localhost
+      become: false
