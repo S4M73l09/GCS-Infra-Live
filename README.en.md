@@ -5,7 +5,6 @@ This README is the environment entry point for the `main` branch.
 ## Index
 
 - [Dev Environment](#dev-environment)
-- [Staging Environment](#staging-environment)
 - [Global Environment](#global-environment)
 
 ---
@@ -119,24 +118,6 @@ Detailed docs:
 - [README dev EN](environments/dev/README.en.md)
 
 </details>
-
----
-
-## Staging Environment
-
-<details>
-<summary><strong>Show Staging summary</strong></summary>
-
-`staging` is kept as a controlled validation/testing environment.
-
-Detailed docs:
-
-- [README staging](environments/staging/README.md)
-- [README staging EN](environments/staging/README.en.md)
-
-</details>
-
----
 
 ## Global Environment
 

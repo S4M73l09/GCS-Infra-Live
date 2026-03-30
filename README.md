@@ -5,7 +5,6 @@ Este README funciona como punto de entrada por entorno en la rama `main`.
 ## Índice
 
 - [Entorno Dev](#entorno-dev)
-- [Entorno Staging](#entorno-staging)
 - [Entorno Global](#entorno-global)
 
 ---
@@ -119,24 +118,6 @@ Documentación específica:
 - [README dev EN](environments/dev/README.en.md)
 
 </details>
-
----
-
-## Entorno Staging
-
-<details>
-<summary><strong>Ver resumen de Staging</strong></summary>
-
-`staging` se mantiene como entorno de validación y pruebas controladas.
-
-Documentación específica:
-
-- [README staging](environments/staging/README.md)
-- [README staging EN](environments/staging/README.en.md)
-
-</details>
-
----
 
 ## Entorno Global
 
