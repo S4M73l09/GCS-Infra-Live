@@ -53,7 +53,6 @@ jobs:
       - uses: terraform-linters/setup-tflint@v4
       - name: TFLint
         run: |
-          cd envinronments/packer-dev/terraform-net
           tflint --init
           tflint -f compact
       
@@ -85,7 +84,7 @@ jobs:
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tfplan-${{ github.sha }}
+          name: tfplan-packer-net-staging-${{ github.sha }}
           path: |
             environments/packer-dev/terraform-net/tfplan.bin
           retention-days: 7
@@ -115,8 +114,8 @@ jobs:
       - name: Download plan artifact
         uses: actions/download-artifact@v4
         with:
-          name: tfplan-${{ github.sha }}
-          path: ./plan
+          name: tfplan-packer-net-staging-${{ github.sha }}
+          path: ./packer-dev/tfplan-packer-net-staging
 
       - name: Auth to Google Cloud (OIDC)
         uses: google-github-actions/auth@v2
@@ -133,7 +132,6 @@ jobs:
       - uses: terraform-linters/setup-tflint@v4
       - name: TFLint
         run: |
-          cd environments/packer-dev/terraform-net
           tflint --init
           tflint -f compact
 
@@ -149,7 +147,7 @@ jobs:
       - name: Terraform-apply
         env:
           TF_VAR_vm_service_account: ${{ vars.GCP_VM_SERVICE_ACCOUNT }}
-        run: terraform apply -input=false -auto-approve ../../../plan/environments/packer-dev/terraform-net/tfplan.bin
+        run: terraform apply -input=false -auto-approve ../../../packer-dev/tfplan-packer-net-staging/tfplan.bin
 
       - name: Export VM outputs
         id: export_vm
@@ -165,8 +163,8 @@ jobs:
       - name: Upload TF outputs
         uses: actions/upload-artifact@v4
         with:
-          name: tfoutputs-${{ github.sha }}
-          path: tfoutputs.json
+          name: tfoutputs-packer-net-${{ github.sha }}
+          path: environments/packer-dev/terraform-net/tfoutputs.json
           retention-days: 7
 
 
@@ -315,7 +313,7 @@ jobs:
       - name: Download TF outputs
         uses: actions/download-artifact@v4
         with:
-          name: tfoutputs-${{ github.sha }}
+          name: tfoutputs-packer-net-${{ github.sha }}
           path: ./tfoutputs
 
       - name: Export VM info
