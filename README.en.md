@@ -32,6 +32,8 @@ environments/staging/
   variables.tf
   terraform.tfvars
   main.tf
+  policy/
+    terraform-policy/
   ansible/
     site.yml
     requirements.yml
@@ -85,7 +87,8 @@ Important paths:
 
 - Main trigger: `push` to `staging` with changes in `environments/staging/**`
 - Flow: resolve environment -> plan -> approval gate -> apply
-- Includes:
+- Includes:  
+  - `Checkov, Trivy and Conftest (OPA)`  
   - Terraform/TFLint cache
   - `tflint --init` + lint
   - `outputs.json` export
@@ -108,6 +111,7 @@ Important paths:
 - IAP SSH warm-up with retries/backoff
 - Terraform/TFLint/Ansible cache
 - `pull_policy: if_not_present` in staging Docker services
+- `Security checks`in workflow `Apply-Live.yaml`
 
 ### Recommended flow
 
