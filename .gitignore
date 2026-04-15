@@ -39,3 +39,7 @@ crash.*.log
 .DS_Store
 Thumbs.dbreports/
 environments/packer-dev/terraform-net/modules/auto-stop-idle/function.zip
+
+# --- Policy as Code (Conftest)
+conftest.tar.gz
+conftest
