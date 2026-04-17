@@ -8,6 +8,7 @@ crash.*.log
 # Planes locales (el CI los sube como artefacto, no al repo)
 **/tfplan.bin
 **/tfplan.txt
+**/tfplan.json
 *.tfplan
 *.bin
 
@@ -37,9 +38,11 @@ crash.*.log
 .idea/
 *.iml
 .DS_Store
-Thumbs.dbreports/
+Thumbs.db
+reports/
 environments/packer-dev/terraform-net/modules/auto-stop-idle/function.zip
 
-# --- Policy as Code (Conftest)
+# --- Policy as Code (Conftest) y seguridad
+trivy.deb
 conftest.tar.gz
 conftest
