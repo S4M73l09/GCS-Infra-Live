@@ -44,6 +44,16 @@ Este README documenta **todo lo que vive en `environments/staging/`** y cómo se
 - Cache de plugins Terraform por lockfile del entorno para acelerar `init`.
 - Export dinámico de `vm_zone` tras `apply` para encadenar automatizaciones.
 
+### Policy as Code (OPA/Conftest)
+
+- Carpeta de políticas: `environments/staging/policy/terraform-policy`.
+- Políticas estáticas sobre `.tf`:
+  - `security.rego` (SA por defecto, secure boot, reglas de firewall SSH abierto).
+  - `labels.rego` (labels obligatorias y `env=staging`).
+- Políticas sobre plan resuelto (`tfplan.json`):
+  - `plan-security.rego` (validación runtime sobre `resource_changes`).
+- `finops.rego` queda orientado a checks basados en plan (no en valores no resueltos del código fuente).
+
 ## Bloque 2: Ansible
 
 ### Rutas
@@ -88,7 +98,12 @@ El workflow no depende de inventario persistente. Genera temporalmente en `ansib
 
 - Trigger principal: `push` en rama `staging` con cambios en `environments/staging/**`.
 - También soporta `workflow_dispatch` (restringido a `staging`).
-- Flujo: `changes -> plan -> approve_gate -> apply -> publish-env-artifact`.
+- Flujo: `changes -> security_checks -> plan -> approve_gate -> apply -> publish-env-artifact`.
+- `security_checks` ejecuta controles estáticos del entorno:
+  - `tflint`
+  - `checkov`
+  - `trivy config`
+- En `plan` se genera `tfplan.json` y se ejecuta `conftest` contra `policy/terraform-policy`.
 - Publica artifacts:
   - `tfplan` (`tfplan.bin`, `tfplan.txt`, `tfplan.json`)
   - `terraform-outputs-staging` (`outputs.json`)
@@ -115,7 +130,9 @@ El workflow no depende de inventario persistente. Genera temporalmente en `ansib
 ## Flujo recomendado de operación
 
 1. Cambiar Terraform o Ansible dentro de `environments/staging/**`.
-2. Push a rama `staging`.
-3. Ejecutar/aprobar `terraform-apply`.
-4. Ejecutar (o encadenar) `Ansible-Inventory`.
-5. Revisar artifacts y validación final de servicios.
+2. Validar localmente políticas estáticas (opcional recomendado):
+   - `conftest test environments/staging/*.tf -p environments/staging/policy/terraform-policy`
+3. Push a rama `staging`.
+4. Ejecutar/aprobar `terraform-apply`.
+5. Ejecutar (o encadenar) `Ansible-Inventory`.
+6. Revisar artifacts y validación final de servicios.
