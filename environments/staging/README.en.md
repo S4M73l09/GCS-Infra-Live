@@ -44,6 +44,16 @@ This README documents **everything under `environments/staging/`** and how it is
 - Terraform plugin cache keyed by environment lockfile to speed up `init`.
 - Dynamic `vm_zone` export after `apply` for chained automation.
 
+### Policy as Code (OPA/Conftest)
+
+- Policy folder: `environments/staging/policy/terraform-policy`.
+- Static policy checks on `.tf`:
+  - `security.rego` (default SA, secure boot, SSH-open firewall checks).
+  - `labels.rego` (required labels and `env=staging`).
+- Runtime checks on resolved plan (`tfplan.json`):
+  - `plan-security.rego` (validation over `resource_changes`).
+- `finops.rego` is oriented to plan-based checks (not unresolved source values).
+
 ## Block 2: Ansible
 
 ### Paths
@@ -88,7 +98,12 @@ The workflow does not rely on persistent inventory. It generates temporary runti
 
 - Main trigger: `push` on `staging` branch with changes in `environments/staging/**`.
 - Also supports `workflow_dispatch` (restricted to `staging`).
-- Flow: `changes -> plan -> approve_gate -> apply -> publish-env-artifact`.
+- Flow: `changes -> security_checks -> plan -> approve_gate -> apply -> publish-env-artifact`.
+- `security_checks` runs static controls for the environment:
+  - `tflint`
+  - `checkov`
+  - `trivy config`
+- `plan` generates `tfplan.json` and runs `conftest` against `policy/terraform-policy`.
 - Published artifacts:
   - `tfplan` (`tfplan.bin`, `tfplan.txt`, `tfplan.json`)
   - `terraform-outputs-staging` (`outputs.json`)
@@ -115,7 +130,9 @@ The workflow does not rely on persistent inventory. It generates temporary runti
 ## Recommended operation flow
 
 1. Change Terraform or Ansible under `environments/staging/**`.
-2. Push to `staging` branch.
-3. Run/approve `terraform-apply`.
-4. Run (or chain) `Ansible-Inventory`.
-5. Review artifacts and final service state.
+2. Validate static policies locally (optional, recommended):
+   - `conftest test environments/staging/*.tf -p environments/staging/policy/terraform-policy`
+3. Push to `staging` branch.
+4. Run/approve `terraform-apply`.
+5. Run (or chain) `Ansible-Inventory`.
+6. Review artifacts and final service state.
