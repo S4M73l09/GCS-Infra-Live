@@ -54,6 +54,19 @@ This README documents **everything under `environments/staging/`** and how it is
   - `plan-security.rego` (validation over `resource_changes`).
 - `finops.rego` is oriented to plan-based checks (not unresolved source values).
 
+### Policy as Code (Custom Checkov)
+
+- Custom checks folder: `environments/staging/checkov/terraform`.
+- Pipeline integration (`security_checks`):
+  - `bridgecrewio/checkov-action@v12`
+  - `external_checks_dirs: ${{ needs.changes.outputs.dir }}/checkov/terraform`
+- Current custom checks:
+  - `check_vm_no_default_sa.py`: fails if VM uses `default` SA or no SA is defined.
+  - `check_vm_secure_boot.py`: enforces `shielded_instance_config.enable_secure_boot = true`.
+  - `check_firewall_no_ssh_open.py`: blocks ingress SSH (`22`) from `0.0.0.0/0`.
+- Optional local syntax validation:
+  - `python3 -m py_compile environments/staging/checkov/terraform/*.py`
+
 ## Block 2: Ansible
 
 ### Paths
@@ -103,6 +116,7 @@ The workflow does not rely on persistent inventory. It generates temporary runti
   - `tflint`
   - `checkov`
   - `trivy config`
+  - `trivy fs`
 - `plan` generates `tfplan.json` and runs `conftest` against `policy/terraform-policy`.
 - Published artifacts:
   - `tfplan` (`tfplan.bin`, `tfplan.txt`, `tfplan.json`)
