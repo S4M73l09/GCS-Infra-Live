@@ -1,7 +1,7 @@
 services:
   prometheus:
-    # prom/prometheus:v2.53.1
-    image: prom/prometheus:v2.53.1
+    # prom/prometheus:v3.5.1 + digest + tag
+    image: prom/prometheus:v3.5.1@sha256:4b05278adfb2e2781063781edd7ca88cc649ea5270cea1696618886a37eeb298
     pull_policy: if_not_present
     container_name: prometheus
     restart: unless-stopped
@@ -36,8 +36,8 @@ services:
       - monitoring
 
   alertmanager:
-    # prom/alertmanager:v0.27.0
-    image: prom/alertmanager:v0.27.0
+    # prom/alertmanager:v0.30.0 + digest + tag
+    image: prom/alertmanager:v0.30.0@sha256:5ba0431d6cb9bda30640de0a8c2c41ecad12bd78847def3e5907e626ed5a49e9
     pull_policy: if_not_present
     container_name: alertmanager
     restart: unless-stopped
@@ -61,8 +61,8 @@ services:
       - monitoring
 
   node-exporter:
-    # prom/node-exporter:v1.7.0
-    image: prom/node-exporter:v1.7.0
+    # prom/node-exporter:v1.10.2 + digest + tag
+    image: prom/node-exporter:v1.10.2@sha256:7bcf2839f207d926b908cd3c566c9f1577efb72268062be0c96cd3b17a5cb283
     pull_policy: if_not_present
     container_name: node-exporter
     restart: unless-stopped
@@ -88,8 +88,8 @@ services:
       - monitoring
 
   grafana:
-    # grafana/grafana:10.4.3
-    image: grafana/grafana:10.4.3
+    # grafana/grafana:12.3.1 + digest + tag
+    image: grafana/grafana:12.3.1@sha256:7c064e627d9cb50c3485c9ded5ca0222de89a08e41403322a0c3ca6f1777a8d1
     pull_policy: if_not_present
     container_name: grafana
     restart: unless-stopped
@@ -127,12 +127,12 @@ services:
       - monitoring
 
   web:
-    # nginx:1.25-alpine
-    image: nginx:1.25-alpine
+    # nginx:1.29.8-alpine + digest + tag
+    image: nginx:1.29.8-alpine@sha256:3bcf852aed06467cf075c6105892e4d5a6ebbbafa0ce22d35062db9e90ddef4c
     pull_policy: if_not_present
     container_name: portfolio-web
     ports:
-      - "80:80"     # PUerto por el que escuchara Nginx
+      - "80:80"     # Puerto por el que escuchara Nginx
     volumes:
       - /opt/web01:/usr/share/nginx/html:ro
     restart: unless-stopped
@@ -147,8 +147,8 @@ services:
       - web-01
 
   blackbox:
-    # prom/blackbox-exporter:v0.24.0
-    image: prom/blackbox-exporter:v0.24.0
+    # prom/blackbox-exporter:v0.28.0 + digest + tag
+    image: quay.io/prometheus/blackbox-exporter:v0.28.0@sha256:43027b43fb785b7c5adc53bd3b5dbc1a258270a2e8aff24f477b45c4e38dac68
     pull_policy: if_not_present
     container_name: blackbox-exporter
     ports:

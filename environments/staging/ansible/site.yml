@@ -100,8 +100,42 @@
         state: present
         remove_orphans: true
 
+    - name: Instalacion Trivy
+      become: true
+      ansible.builtin.shell: |
+        set -euo pipefail
+        TRIVY_VERSION=0.50.1
+        curl -sSL -o /tmp/trivy.deb \
+          "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+        dpkg -i /tmp/trivy.deb
+      args:
+        executable: /bin/bash
+        creates: /usr/bin/trivy
+      changed_when: false
+
+    - name: Limpiar paquete Trivy temporal
+      ansible.builtin.file:
+        path: /tmp/trivy.deb
+        state: absent
+
+    - name: Obtener las imagenes del contenedor
+      ansible.builtin.command: docker ps --format '{{.Image}}'
+      register: running_images
+      changed_when: false
+
+    - name: Escaneo de imagenes en accion (HIGH/CRITICAL)
+      become: true
+      ansible.builtin.command: >
+        trivy image --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item }}
+      loop: "{{ running_images.stdout_lines | unique }}"
+      when: running_images.stdout_lines | length > 0
+      register: running_images_scan
+      failed_when: running_images_scan is failed
+      changed_when: false
+
+
   handlers:
-    - name: restart monitoring stack
+    - name: Reinicio de stack monitoring
       community.docker.docker_compose_v2:
         project_src: "{{ monitoring_base_dir }}/docker"
         state: present
