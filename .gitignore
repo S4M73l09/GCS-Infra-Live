@@ -46,3 +46,7 @@ environments/packer-dev/terraform-net/modules/auto-stop-idle/function.zip
 trivy.deb
 conftest.tar.gz
 conftest
+
+# --- Python (cache de reglas de checkov)
+__pychache__/
+*.py[cod]

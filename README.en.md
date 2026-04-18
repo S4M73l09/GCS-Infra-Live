@@ -32,6 +32,8 @@ environments/staging/
   variables.tf
   terraform.tfvars
   main.tf
+  checkov/
+    terraform/
   policy/
     terraform-policy/
   ansible/
