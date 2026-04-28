@@ -41,6 +41,7 @@ crash.*.log
 Thumbs.db
 reports/
 environments/packer-dev/terraform-net/modules/auto-stop-idle/function.zip
+.codex
 
 # --- Policy as Code (Conftest) y seguridad
 trivy.deb
