@@ -1,4 +1,4 @@
-project_id = "gcloud-live-dev" # ←  proyecto LIVE
+project_id = "gcloud-live-staging" # ←  proyecto LIVE
 region     = "europe-west1"
 
 # Nuestro usuario (SSH normal y sudo)
