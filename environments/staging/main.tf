@@ -42,7 +42,7 @@ resource "google_compute_instance" "ubuntu" {
   }
 
   service_account {
-    email  = "default"
+    email  = var.vm_service_account
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 
