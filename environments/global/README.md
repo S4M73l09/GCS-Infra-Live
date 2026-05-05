@@ -39,6 +39,29 @@ Este stack publica outputs para que otros stacks (por ejemplo `packer-dev`) reut
 - `cloud_nat_name`
 - `cloud_nat_self_link`
 
+## Policy as Code (OPA/Conftest)
+
+- Carpeta de políticas: `environments/global/policy-global`
+- Políticas estáticas sobre `.tf`:
+  - Firewall SSH solo desde IAP `35.235.240.0/20`
+  - `target_tags` obligatoria con `iap-ssh` en la regla de firewall SSH
+  - Cloud NAT con `log_config.enable = true`
+  - Cloud NAT con `enable_endpoint_independent_mapping = true`
+  - APIs obligatorias:
+    - `compute.googleapis.com`
+    - `oslogin.googleapis.com`
+- Políticas sobre `tfplan.json`:
+  - Bloqueo de `delete/replace` sobre recursos globales compartidos:
+    - `google_compute_firewall`
+    - `google_compute_router`
+    - `google_compute_router_nat`
+  - Revalidación en runtime de la regla SSH vía IAP
+  - Revalidación en runtime de la configuración segura de Cloud NAT
+
+Separación de responsabilidades:
+- `security.rego`: validación estática/local del código Terraform.
+- `plan-security.rego`: validación runtime del plan resuelto antes del apply.
+
 ## Cómo se aplica
 Este stack se **aplicó desde consola** porque son recursos “one-off” (se crean una vez y luego se gestionan aquí).  
-No es necesario añadirlo a los workflows en serie.
+Igualmente se pueden usar workflows para mantener consistencia y trazabilidad.

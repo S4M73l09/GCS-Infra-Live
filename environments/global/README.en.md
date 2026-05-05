@@ -39,6 +39,30 @@ This stack publishes outputs so other stacks (for example `packer-dev`) can reus
 - `cloud_nat_name`
 - `cloud_nat_self_link`
 
+## Policy as Code (OPA/Conftest)
+
+- Policy directory: `environments/global/policy-global`
+- Static policies on `.tf`:
+  - SSH firewall access allowed only from IAP `35.235.240.0/20`
+  - Mandatory `target_tags` with `iap-ssh` on the SSH firewall rule
+  - Cloud NAT with `log_config.enable = true`
+  - Cloud NAT with `enable_endpoint_independent_mapping = true`
+  - Required APIs:
+    - `compute.googleapis.com`
+    - `oslogin.googleapis.com`
+- Policies on `tfplan.json`:
+  - Block `delete/replace` on shared global resources:
+    - `google_compute_firewall`
+    - `google_compute_router`
+    - `google_compute_router_nat`
+  - Runtime revalidation of the IAP SSH rule
+  - Runtime revalidation of secure Cloud NAT settings
+
+Responsibility split:
+- `security.rego`: static/local validation of Terraform source code.
+- `plan-security.rego`: runtime validation of the resolved plan before apply.
+
 ## How it is applied
 This stack was **applied from the console/terminal** because these are “one-off” resources (created once and managed here).  
-It does not need to be part of the CI workflow chain.
+Workflows can also be used to maintain consistency and traceability.
+
