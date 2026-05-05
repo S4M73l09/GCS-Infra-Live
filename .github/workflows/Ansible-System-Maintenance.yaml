@@ -1,0 +1,338 @@
+name: Ansible-System-Maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug_mode:
+        description: "Activar pasos debug"
+        required: false
+        default: "false"
+      maintenance_mode:
+        description: "Maintenance mode: full or security_only"
+        required: false
+        default: "full"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: ansible-maintenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve_context:
+    name: Resolve branch context
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.ctx.outputs.env }}
+      dir: ${{ steps.ctx.outputs.dir }}
+      playbook: ${{ steps.ctx.outputs.playbook }}
+    steps:
+      - name: Resolve branch to environment
+        id: ctx
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "${{ github.ref_name }}" in
+            staging)
+              echo "env=staging" >> "$GITHUB_OUTPUT"
+              echo "dir=environments/staging" >> "$GITHUB_OUTPUT"
+              echo "playbook=environments/staging/ansible/system-maintenance.yml" >> "$GITHUB_OUTPUT"
+              ;;
+            main)
+              echo "env=dev" >> "$GITHUB_OUTPUT"
+              echo "dir=environments/dev" >> "$GITHUB_OUTPUT"
+              echo "playbook=environments/dev/ansible/system-maintenance.yml" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported branch: ${{ github.ref_name }}. Supported branches: staging, main." >&2
+              exit 1
+              ;;
+          esac
+
+  run_maintenance:
+    name: Run system maintenance
+    needs: resolve_context
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve_context.outputs.env }}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:e5988181787670e47bab44136eefd93001baea254c49413b7ec03eae2e9470a5
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate playbook path exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "${{ needs.resolve_context.outputs.playbook }}" ]; then
+            echo "Maintenance playbook not found: ${{ needs.resolve_context.outputs.playbook }}" >&2
+            exit 1
+          fi
+
+          if [ ! -f "${{ needs.resolve_context.outputs.dir }}/ansible/requirements.yml" ]; then
+            echo "Ansible requirements not found: ${{ needs.resolve_context.outputs.dir }}/ansible/requirements.yml" >&2
+            exit 1
+          fi
+
+      - name: Auth GCP (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_INFRA_PROJECT_ID }}
+          export_environment_variables: true
+
+      - name: Generate ephemeral SSH keypair
+        run: |
+          set -euo pipefail
+          mkdir -p ansible-runtime
+          SSH_KEY_PATH="ansible-runtime/gha_ansible"
+          rm -f "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
+          ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "gha-ansible@gha"
+          chmod 600 "${SSH_KEY_PATH}"
+          echo "ANSIBLE_SSH_KEY_PATH=${SSH_KEY_PATH}" >> "$GITHUB_ENV"
+
+      - name: Register SSH key with OS Login
+        run: |
+          set -euo pipefail
+          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+
+          gcloud compute os-login ssh-keys add \
+            --key-file="${ANSIBLE_SSH_KEY_PATH}.pub" \
+            --ttl=1h \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }}
+
+          SSH_USER=$(gcloud compute os-login describe-profile \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }} \
+            --format='value(posixAccounts[0].username)')
+
+          if [ -z "$SSH_USER" ]; then
+            echo "OS Login user not found in profile" >&2
+            exit 1
+          fi
+
+          echo "${SSH_USER}" > ansible-runtime/ssh_user.txt
+          echo "ANSIBLE_SSH_USER=${SSH_USER}" >> "$GITHUB_ENV"
+
+      - name: Ensure GCP VMs are running
+        run: |
+          set -euo pipefail
+          echo "Checking for stopped GCP instances in environment: ${{ needs.resolve_context.outputs.env }}"
+
+          STOPPED_INSTANCES=$(gcloud compute instances list \
+            --filter="labels.env=${{ needs.resolve_context.outputs.env }} AND (status=TERMINATED OR status=STOPPED OR status=SUSPENDED)" \
+            --format="value(name,zone.basename())")
+
+          if [ -z "$STOPPED_INSTANCES" ]; then
+            echo "No stopped instances found for environment: ${{ needs.resolve_context.outputs.env }}"
+          else
+            echo "Found stopped instances. Attempting to start them:"
+            echo "$STOPPED_INSTANCES" | while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
+              INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+              INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
+              echo "Starting instance: $INSTANCE_NAME in zone: $INSTANCE_ZONE"
+              gcloud compute instances start "$INSTANCE_NAME" --zone="$INSTANCE_ZONE" --quiet
+            done
+
+            echo "Waiting for instances to reach RUNNING state..."
+            MAX_WAIT_TIME=300
+            WAIT_INTERVAL=10
+            ELAPSED_TIME=0
+
+            while [ "$ELAPSED_TIME" -lt "$MAX_WAIT_TIME" ]; do
+              RUNNING_INSTANCES=$(gcloud compute instances list \
+                --filter="labels.env=${{ needs.resolve_context.outputs.env }} AND status=RUNNING" \
+                --format="value(name)")
+
+              ALL_INSTANCES=$(gcloud compute instances list \
+                --filter="labels.env=${{ needs.resolve_context.outputs.env }}" \
+                --format="value(name)")
+
+              TOTAL_COUNT=$(echo "$ALL_INSTANCES" | grep -c . || true)
+              RUNNING_COUNT=$(echo "$RUNNING_INSTANCES" | grep -c . || true)
+
+              if [ "$TOTAL_COUNT" -eq "$RUNNING_COUNT" ] && [ "$TOTAL_COUNT" -gt 0 ]; then
+                echo "All instances are now running."
+                break
+              fi
+
+              echo "Still waiting for instances to start. Running: $RUNNING_COUNT/$TOTAL_COUNT. Elapsed time: ${ELAPSED_TIME}s"
+              sleep "$WAIT_INTERVAL"
+              ELAPSED_TIME=$((ELAPSED_TIME + WAIT_INTERVAL))
+            done
+
+            if [ "$ELAPSED_TIME" -ge "$MAX_WAIT_TIME" ]; then
+              echo "Warning: Some instances did not reach RUNNING state within the timeout."
+            fi
+          fi
+
+      - name: Discover running instances
+        env:
+          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ansible-runtime
+
+          gcloud compute instances list \
+            --project="${GCP_PROJECT}" \
+            --filter="labels.env=${{ needs.resolve_context.outputs.env }} AND status=RUNNING" \
+            --format="value(name,zone.basename())" \
+            > ansible-runtime/hosts_with_zones.list
+
+          cut -f1 ansible-runtime/hosts_with_zones.list > ansible-runtime/hosts.list || true
+
+      - name: Debug discovered hosts
+        if: ${{ inputs.debug_mode == 'true' }}
+        run: |
+          echo "=== ansible-runtime/hosts.list ==="
+          cat ansible-runtime/hosts.list || echo "NO INSTANCES FOUND"
+          echo "=== ansible-runtime/hosts_with_zones.list ==="
+          cat ansible-runtime/hosts_with_zones.list || echo "NO INSTANCES WITH ZONE"
+
+      - name: Warm up SSH access via IAP
+        env:
+          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+          : "${ANSIBLE_SSH_USER:?ANSIBLE_SSH_USER is required}"
+
+          if [ ! -s ansible-runtime/hosts_with_zones.list ]; then
+            echo "No hosts to warm up."
+            exit 0
+          fi
+
+          while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
+            if [ -z "$INSTANCE_NAME" ]; then
+              continue
+            fi
+
+            INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+            INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
+
+            if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
+              echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
+              continue
+            fi
+
+            ZONE_ARG=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
+            echo "Warming up SSH access for ${INSTANCE_NAME} (${ZONE_ARG})"
+
+            for attempt in $(seq 1 4); do
+              if ssh \
+                -i "${ANSIBLE_SSH_KEY_PATH}" \
+                -o StrictHostKeyChecking=no \
+                -o UserKnownHostsFile=/dev/null \
+                -o ProxyCommand="gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${ZONE_ARG} --listen-on-stdin --quiet" \
+                "${ANSIBLE_SSH_USER}@127.0.0.1" \
+                "true"; then
+                echo "SSH warm-up succeeded for ${INSTANCE_NAME}"
+                break
+              fi
+
+              if [ "$attempt" -eq 4 ]; then
+                echo "ERROR: SSH warm-up failed for ${INSTANCE_NAME} after 4 attempts"
+                exit 1
+              fi
+
+              echo "Retrying SSH warm-up for ${INSTANCE_NAME} (attempt $((attempt + 1)))"
+              sleep $((attempt * 2))
+            done
+          done < ansible-runtime/hosts_with_zones.list
+
+      - name: Generate Ansible inventory
+        env:
+          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+          : "${ANSIBLE_SSH_USER:?ANSIBLE_SSH_USER is required}"
+
+          if [ ! -s ansible-runtime/hosts_with_zones.list ]; then
+            echo "ERROR: hosts_with_zones.list is empty."
+            exit 1
+          fi
+
+          {
+            echo "[gce]"
+            while IFS=$'\t' read -r INSTANCE_NAME INSTANCE_ZONE; do
+              if [ -z "$INSTANCE_NAME" ]; then
+                continue
+              fi
+
+              INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
+              INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
+
+              if [ -z "$INSTANCE_NAME" ] || [ -z "$INSTANCE_ZONE" ]; then
+                echo "Skipping entry with empty name or zone: '${INSTANCE_NAME}' '${INSTANCE_ZONE}'"
+                continue
+              fi
+
+              SSH_ARGS="-i ${ANSIBLE_SSH_KEY_PATH} -o ProxyCommand=\"gcloud compute start-iap-tunnel ${INSTANCE_NAME} 22 --project=${GCP_PROJECT} --zone=${INSTANCE_ZONE} --listen-on-stdin --quiet\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o CheckHostIP=no"
+              printf "%s ansible_user=%s ansible_host=127.0.0.1 ansible_ssh_private_key_file=%s ansible_ssh_common_args='%s'\n" \
+                "$INSTANCE_NAME" \
+                "$ANSIBLE_SSH_USER" \
+                "${ANSIBLE_SSH_KEY_PATH}" \
+                "$SSH_ARGS"
+            done < ansible-runtime/hosts_with_zones.list
+          } > ansible-runtime/hosts.ini
+
+          printf "%s\n" \
+            "[defaults]" \
+            "host_key_checking = False" \
+            > ansible-runtime/ansible.cfg
+
+      - name: Debug inventory after generation
+        if: ${{ inputs.debug_mode == 'true' }}
+        run: |
+          echo "=== ansible-runtime/hosts.ini ==="
+          cat ansible-runtime/hosts.ini
+
+      - name: Cache Ansible collections and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ansible/collections
+            ~/.cache/pip
+          key: ansible-cache-${{ runner.os }}-core217-${{ hashFiles(format('{0}/ansible/requirements.yml', needs.resolve_context.outputs.dir)) }}
+          restore-keys: |
+            ansible-cache-${{ runner.os }}-core217-
+            ansible-cache-${{ runner.os }}-
+
+      - name: Install Ansible
+        run: |
+          apt-get update -y
+          apt-get install -y python3-venv
+          python3 -m venv /opt/ansible-venv
+          /opt/ansible-venv/bin/python -m pip install --no-cache-dir "ansible-core==2.17.*"
+          echo "/opt/ansible-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Validate maintenance mode
+        run: |
+          case "${{ inputs.maintenance_mode }}" in
+            full|security_only) ;;
+            *)
+              echo "Invalid maintenance_mode: ${{ inputs.maintenance_mode }}" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Install Ansible collections
+        run: ansible-galaxy collection install -r "${{ needs.resolve_context.outputs.dir }}/ansible/requirements.yml"
+
+      - name: Run system maintenance playbook
+        env:
+          ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
+        run: |
+          ansible-playbook \
+            -i ansible-runtime/hosts.ini \
+            "${{ needs.resolve_context.outputs.playbook }}" \
+            -e maintenance_mode="${{ inputs.maintenance_mode }}"
