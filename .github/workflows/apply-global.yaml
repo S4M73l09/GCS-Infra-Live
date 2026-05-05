@@ -1,0 +1,261 @@
+---
+
+
+name: apply-global
+
+
+on:
+  push:
+     branches: ["staging"]
+     paths:
+       - "environments/global/**"
+       - ".github/workflows/apply-global.yaml"
+  workflow_dispatch:
+
+permissions:
+   contents: read
+   id-token: write
+
+concurrency:
+   group: apply-global-${{ github.ref }}-${{ github.event_name }}
+   cancel-in-progress: true
+
+jobs:
+    #--------------------------------------------------------
+    ## -- Security Checks -- ##
+    #--------------------------------------------------------
+  security_checks:
+    name: Security checks (TFLint/Checkov/OPA)
+    runs-on: ubuntu-latest
+    environment: Global
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+    
+      - name: Google Auth (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        
+      - name: Setup Terraform 1.13.5
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+          terraform_wrapper: false
+
+      - name: Terraform Init (readonly lockfile)
+        working-directory: environments/global
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint init + lint
+        working-directory: environments/global
+        run: |
+          tflint --init
+          tflint -f compact
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: environments/global
+          framework: terraform
+          external_checks_dirs: environments/global/checkov/terraform
+
+      - name: Install trivy
+        run: |
+          TRIVY_VERSION=0.50.1
+          curl -sSL -o trivy.deb \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          sudo dpkg -i trivy.deb
+
+      - name: Trivy Iac scan (global + Apply workflow)
+        run: |
+          set -euo pipefail
+
+          TARGET_DIR="${GITHUB_WORKSPACE}/environments/global"
+          WORKFLOW_FILE="${GITHUB_WORKSPACE}/.github/workflows/apply-global.yaml"
+
+          if [ ! -f "${WORKFLOW_FILE}" ]; then
+            echo "Workflow file not found: ${WORKFLOW_FILE}" >&2
+            exit 1
+          fi
+
+          trivy config --exit-code 1 --severity HIGH,CRITICAL "${TARGET_DIR}"
+          trivy config --exit-code 1 --severity HIGH,CRITICAL "${WORKFLOW_FILE}"
+
+  plan:
+    name: Terraform Plan_and_Apply
+    runs-on: ubuntu-latest
+    needs: security_checks
+    environment: global
+    timeout-minutes: 30 # 30 minutos para la generacion del plan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terraform 1.13.5
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+          terraform_wrapper: false
+
+      - name: Google Auth (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Cache TF plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.terraform.d/plugins-cache
+          key: tf-${{ runner.os }}-${{ hashFiles('environments/global/.terraform.lock.hcl') }}
+          restore-keys: |
+            tf-${{ runner.os }}-
+
+      - name: Cache TFLint plugins
+        uses: actions/cache@v4
+        with:
+          path: ~/.tflint.d/plugins
+          key: tflint-${{ runner.os }}-${{ hashFiles('environments/global/.tflint.hcl') }}
+          restore-keys: |
+            tflint-${{ runner.os }}-
+
+      - name: Configure TF plugin cache
+        run: |
+          mkdir -p ~/.terraform.d
+          echo 'plugin_cache_dir = "~/.terraform.d/plugin-cache"' > ~/.terraform.d/terraform.rc
+
+      - name: Terraform Init (readonly lockfile)
+        working-directory: environments/global
+        run: terraform init -input=false -lockfile=readonly
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint init + lint
+        working-directory: environments/global
+        run: |
+          tflint --init
+          tflint -f compact
+
+      - name: Terraform Plan (save)
+        id: planfile
+        working-directory: environments/global
+        shell: bash
+        run: |
+          set -e
+          terraform plan -input=false -no-color -out=tfGlobalPlan.bin
+          terraform show -no-color tfGlobalPlan.bin > tfGlobalPlan.txt
+          terraform show -json tfGlobalPlan.bin > tfGlobalPlan.json
+
+      - name: Install Conftest
+        run: |
+          CONFTEST_VERSION=0.58.0
+          curl -sSL -o conftest.tar.gz \
+            "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
+          tar -xzf conftest.tar.gz conftest
+          sudo mv conftest /usr/local/bin/conftest
+          conftest --version
+
+      - name: OPA Conftest (global plan)
+        working-directory: environments/global
+        run: |
+          conftest test tfGlobalPlan.json -p policy/policy-global
+      
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfGlobalPlan
+          path: |
+            environments/global/tfGlobalPlan.bin
+            environments/global/tfGlobalPlan.txt
+            environments/global/tfGlobalPlan.json
+      
+      - name: Plan summary
+        working-directory: environments/global
+        run: |
+          {
+            echo "## Global Plan Summary"
+            echo ""
+            echo "- Environment: global"
+            grep -E "^Plan: tfGlobalPlan.txt || echo "- No plan summary found"
+          } >> "$GITHUB_STEP_SUMMARY"
+    
+  # ------------------------------------------------------------
+  # 2) Gate de aprobacion (Environment con Required reviewers)
+  #-------------------------------------------------------------
+  approve_gate:
+    name: Await approval (global)
+    timeout-minutes: 1440 # 24H antes de que expire
+    runs-on: ubuntu-latest
+    needs: plan
+    environment:
+      name: Global-reviewers
+      url: https://console.cloud.google.com
+    steps:
+      - run: echo "Esperando aprobación para entorno global"
+
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: approve_gate
+    environment: global
+    timeout-minutes: 30 # 30 minutos para la aplicacion del apply
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Terraform 1.13.5
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+          terraform_wrapper: false
+      
+      - name: Google Auth (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfGlobalPlan
+          path: environments/global
+
+      - name: Terraform Init (reconfigure)
+        working-directory: environments/global
+        run: terraform init -input=false -reconfigure
+
+      - name: Terraform Apply (from plan)
+        working-directory: environments/global
+        run: terraform apply -input=false -no-color tfGlobalPlan.bin
+
+      - name: Export Terraform outputs
+        working-directory: environments/global
+        run: terraform output -json > tfGlobalOutputs.json
+
+      - name: Apply Summary
+        working-directory: environments/global
+        run: |
+          {
+            echo "## Global Apply Summary"
+            echo ""
+            echo "- Environment: global"
+            echo "- Project: $(terraform output -raw project_id 2>/dev/null || echo 'n/a')"
+            echo "- Region: $(terraform output -raw region 2>/dev/null || echo 'n/a')"
+            echo "- Network: $(terraform output -raw network_name 2>/dev/null || echo 'n/a')"
+            echo "- Firewall IAP SSH: $(terraform output -raw iap_ssh_firewall_name 2>/dev/null || echo 'n/a')"
+            echo "- Cloud Router: $(terraform output -raw cloud_router_name 2>/dev/null || echo 'n/a')"
+            echo "- Cloud NAT: $(terraform output -raw cloud_nat_name 2>/dev/null || echo 'n/a')"
+            } >> "$GITHUB_STEP_SUMMARY"
+
+
