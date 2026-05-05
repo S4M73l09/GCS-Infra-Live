@@ -26,14 +26,3 @@ variable "iap_members" {
   default     = []
 }
 
-variable "enable_oslogin_2fa" {
-  type        = bool
-  description = "Exigir 2FA para SSH vía OS Login (requiere 2SV en la cuenta)"
-  default     = false
-}
-
-variable "block_project_ssh_keys" {
-  type        = bool
-  description = "Bloquear claves heredadas de metadatos del proyecto/instancia"
-  default     = true
-}

@@ -9,5 +9,4 @@ osadmin_members = ["user:saminfradevops@gmail.com"]
 # iap_members = ["user:saminfradevops@gmail.com"]
 
 # Opcionales
-enable_oslogin_2fa     = false
-block_project_ssh_keys = true
+
