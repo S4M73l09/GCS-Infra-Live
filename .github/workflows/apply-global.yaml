@@ -173,7 +173,7 @@ jobs:
       - name: OPA Conftest (global plan)
         working-directory: environments/global
         run: |
-          conftest test tfGlobalPlan.json -p policy/policy-global
+          conftest test tfGlobalPlan.json -p policy-global
       
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
