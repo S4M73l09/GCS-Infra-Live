@@ -62,6 +62,24 @@ Separación de responsabilidades:
 - `security.rego`: validación estática/local del código Terraform.
 - `plan-security.rego`: validación runtime del plan resuelto antes del apply.
 
+## Autenticación CI/CD para Global
+
+- El workflow `apply-global` usa una Service Account dedicada creada en el proyecto `bootstrap-476212`.
+- Dicha Service Account es impersonada desde GitHub Actions mediante `OIDC / Workload Identity Federation (WIF)`.
+- La cuenta está pensada para el alcance `global` de los proyectos destino, sin reutilizar el mismo state entre proyectos distintos.
+
+Permisos necesarios en `gcloud-live-staging` para este stack:
+- `roles/compute.admin`
+- `roles/serviceusage.serviceUsageAdmin`
+- `roles/resourcemanager.projectIamAdmin`
+
+Estos permisos cubren el alcance actual del entorno `global`:
+- activación y gestión de APIs del proyecto
+- bindings IAM de proyecto para OS Login / OS Admin / IAP
+- firewall IAP SSH
+- Cloud Router
+- Cloud NAT
+
 ## Cómo se aplica
 Este stack se **aplicó desde consola** porque son recursos “one-off” (se crean una vez y luego se gestionan aquí).  
 Igualmente se pueden usar workflows para mantener consistencia y trazabilidad.
