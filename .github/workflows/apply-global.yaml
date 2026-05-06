@@ -37,6 +37,14 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_GLOBAL_SERVICE_ACCOUNT }}
+
+      - name: Debug Google Auth / ADC
+        run: |
+          set -euo pipefail
+          gcloud auth list
+          gcloud config list
+          gcloud auth application-default print-access-token
+          gcloud storage ls gs://bootstrap-476212-tfstate/live/staging/global/
         
       - name: Setup Terraform 1.13.5
         uses: hashicorp/setup-terraform@v3
@@ -257,5 +265,4 @@ jobs:
             echo "- Cloud Router: $(terraform output -raw cloud_router_name 2>/dev/null || echo 'n/a')"
             echo "- Cloud NAT: $(terraform output -raw cloud_nat_name 2>/dev/null || echo 'n/a')"
             } >> "$GITHUB_STEP_SUMMARY"
-
 
