@@ -67,6 +67,10 @@ Responsibility split:
 - The `apply-global` workflow uses a dedicated Service Account created in the `bootstrap-476212` project.
 - This Service Account is impersonated from GitHub Actions through `OIDC / Workload Identity Federation (WIF)`.
 - The account is intended for the `global` scope of target projects, without reusing the same Terraform state across different projects.
+- The active Service Account for this flow is a dedicated global SA, for example `terraform-global-runner-v2@<bootstrap-project>.iam.gserviceaccount.com`.
+- The `github-provider` WIF provider uses `google.subject = assertion.repository_id` to avoid depending on GitHub's `sub`, which changes when the workflow uses GitHub Environments.
+- The stable subject expected for this repository is the numeric GitHub `repository_id`, so the Service Account must allow a principal with this shape:
+  - `principal://iam.googleapis.com/projects/<bootstrap-project-number>/locations/global/workloadIdentityPools/<pool-id>/subject/<repository-id>`
 
 Required roles in `gcloud-live-staging` for this stack:
 - `roles/compute.admin`
@@ -79,6 +83,21 @@ These roles cover the current `global` environment scope:
 - IAP SSH firewall
 - Cloud Router
 - Cloud NAT
+
+Required permissions in `bootstrap-476212` for the remote state:
+- On the Service Account itself:
+  - `roles/iam.workloadIdentityUser` for the stable repository principal.
+  - `roles/iam.serviceAccountTokenCreator` for the stable repository principal.
+  - `roles/iam.serviceAccountTokenCreator` for the Service Account itself.
+- On the remote state bucket, for example `gs://<bootstrap-tfstate-bucket>`:
+  - `roles/storage.objectAdmin` conditioned to the `live/staging/global/` prefix.
+  - `roles/storage.legacyBucketReader` on the bucket to allow the listing required by Terraform's GCS backend.
+
+WIF adjustment context:
+- The previous provider used `google.subject = assertion.sub`.
+- With `environment: Global`, GitHub emitted a subject such as `repo:<owner>/<repo>:environment:Global`.
+- That subject caused `iam.serviceAccounts.getAccessToken denied` errors when impersonating the Service Account.
+- Switching to `google.subject = assertion.repository_id` stabilizes the federated identity and decouples impersonation from the Environment name.
 
 ## How it is applied
 This stack was **applied from the console/terminal** because these are “one-off” resources (created once and managed here).  
