@@ -1,5 +1,6 @@
 package terraform.global.plan_security
 
+import rego.v1
 import future.keywords.in
 
 critical_types := {

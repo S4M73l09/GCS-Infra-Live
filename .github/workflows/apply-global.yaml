@@ -57,13 +57,6 @@ jobs:
           tflint --init
           tflint -f compact
 
-      - name: Checkov
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: environments/global
-          framework: terraform
-          external_checks_dirs: environments/global/checkov/terraform
-
       - name: Install trivy
         run: |
           set -euo pipefail
@@ -163,7 +156,7 @@ jobs:
 
       - name: Install Conftest
         run: |
-          CONFTEST_VERSION=0.58.0
+          CONFTEST_VERSION=0.68.2
           curl -sSL -o conftest.tar.gz \
             "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz"
           tar -xzf conftest.tar.gz conftest

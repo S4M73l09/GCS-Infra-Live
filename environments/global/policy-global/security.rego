@@ -2,6 +2,7 @@
 
 package terraform.global.security
 
+import rego.v1
 import future.keywords.in
 
 deny contains msg if {
