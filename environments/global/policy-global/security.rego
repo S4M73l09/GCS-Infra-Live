@@ -2,6 +2,8 @@
 
 package terraform.global.security
 
+import future.keywords.in
+
 deny contains msg if {
   some r in input.resource.google_compute_firewall
   some allow in r.allow

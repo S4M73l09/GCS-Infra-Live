@@ -1,5 +1,7 @@
 package terraform.global.plan_security
 
+import future.keywords.in
+
 critical_types := {
   "google_compute_firewall",
   "google_compute_router",
