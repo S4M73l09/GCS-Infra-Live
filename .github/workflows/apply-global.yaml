@@ -37,6 +37,7 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_GLOBAL_SERVICE_ACCOUNT }}
+          create_credentials_file: true
 
       - name: Debug Google Auth / ADC
         run: |
