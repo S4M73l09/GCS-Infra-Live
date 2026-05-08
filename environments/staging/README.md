@@ -105,6 +105,13 @@ El workflow no depende de inventario persistente. Genera temporalmente en `ansib
 - `hosts_with_zones.list`
 - clave SSH efímera
 
+### Archivo de mantenimiento
+
+El archivo `system-maintenance.yml` es usado para la actualizacion de paquetes en distribuciones `Linux`, 
+y en mantenimiento de archivos criticos o vulnerabilidades.
+
+Dicho archivo es activado por el workflow `Asnsible-System-Maintenance.yaml` el cual genera todo lo necesario de manera automatica y en `Runtime`.
+
 ## Bloque 3: Workflows que usan esta ruta
 
 ### 1) `.github/workflows/Apply-Live.yaml` (`name: terraform-apply`)

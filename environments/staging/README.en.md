@@ -105,6 +105,12 @@ The workflow does not rely on persistent inventory. It generates temporary runti
 - `hosts_with_zones.list`
 - ephemeral SSH key
 
+### Maintenance File
+
+This file `system-maintenance.yml` is use for update packages in `Linux` and maintenance of critical files or vulnerability.
+
+This is activated by the workflow `Ansible-System-Maintenance.yaml` which generates everything necessary Runtime.
+
 ## Block 3: Workflows using this path
 
 ### 1) `.github/workflows/Apply-Live.yaml` (`name: terraform-apply`)
