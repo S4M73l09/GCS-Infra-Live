@@ -1,6 +1,22 @@
 from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck
 from checkov.common.models.enums import CheckCategories, CheckResult
 
+def includes_ssh_port(port: str) -> bool:
+    if port == "22":
+        return True
+
+    if "-" not in port:
+        return False
+
+    start, end = port.split("-", 1)
+
+    try:
+        return int(start) <= 22 <= int(end)
+    except ValueError:
+        return False
+
+
+
 class FirewallNoSSHOpen(BaseResourceCheck):
     def __init__(self) -> None:
         name = "Firewall must not allow SSH from 0.0.0.0/0"
@@ -24,10 +40,19 @@ class FirewallNoSSHOpen(BaseResourceCheck):
             allow_blocks = allow_blocks[0]
 
         for allow in allow_blocks:
-            ports = allow.get("ports", [])
+            protocol = allow.get("protocol", [""])[0]
+            ports    = allow.get("ports", [])
             flat_ports = ports[0] if ports and isinstance(ports[0], list) else ports
-            if "22" in flat_ports:
+
+            if protocol == "all":
                 return CheckResult.FAILED
+
+            if protocol == "tcp" and not flat_ports:
+                return CheckResult.FAILED
+
+            if protocol == "tcp" and any(includes_ssh_port(str(port)) for port in flat_ports):
+                return CheckResult.FAILED
+
 
         return CheckResult.PASSED
 
