@@ -77,7 +77,7 @@ variable "create_public_ip" {
   default     = false
 }
 
-service_account {
-  email  = var.vm_service_account
-  scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+variable "vm_service_account" {
+  type        = string
+  description = "Service Account usada por la VM"
 }
