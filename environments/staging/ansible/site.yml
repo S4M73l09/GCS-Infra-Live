@@ -20,7 +20,7 @@
           install algif_aead /bin/false
 
     - name: Descargar modulo algif_aead si esta cargado
-      ansible.builtin.commad: modprobe -r algif_aead
+      ansible.builtin.command: modprobe -r algif_aead
       register: unload_algif_aead
       failed_when: false
       changed_when: unload_algif_aead.rc == 0
@@ -71,11 +71,19 @@
         state: directory
         mode: "0755"
 
+    - name: Validar secrets requeridos para Grafana
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'GRAFANA_ADMIN_USER') | length > 0
+          - lookup('env', 'GRAFANA_ADMIN_PASSWORD') | length >= 16
+        fail_msg: "Faltan GRAFANA_ADMIN_USER/GRAFANA_ADMIN_PASSWORD o la password es demasiado corta"
+      no_log: true
+
     - name: Plantilla de docker-compose.yml para monitoring
       ansible.builtin.template:
         src: templates/monitoring/docker-compose.yml.j2
         dest: "{{ monitoring_base_dir }}/docker/docker-compose.yml"
-        mode: "0644"
+        mode: "0600"
       notify: restart monitoring stack
 
     - name: Copiar configuración de Prometheus
@@ -122,19 +130,20 @@
       become: true
       ansible.builtin.shell: |
         set -euo pipefail
-        TRIVY_VERSION=0.50.1
-        curl -sSL -o /tmp/trivy.deb \
-          "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
-        dpkg -i /tmp/trivy.deb
+        apt-get update
+        apt-get install -y wget gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+          | gpg --dearmor \
+          | tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+          | tee /etc/apt/sources.list.d/trivy.list
+        apt-get update
+        apt-get install -y trivy
+        trivy --version
       args:
         executable: /bin/bash
         creates: /usr/bin/trivy
       changed_when: false
-
-    - name: Limpiar paquete Trivy temporal
-      ansible.builtin.file:
-        path: /tmp/trivy.deb
-        state: absent
 
     - name: Obtener las imagenes del contenedor
       ansible.builtin.command: docker ps --format '{{.Image}}'
