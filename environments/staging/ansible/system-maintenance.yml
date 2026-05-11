@@ -1,0 +1,160 @@
+---
+- name: System maintenance and security patching
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    maintenance_log_path: /var/log/system-maintenance.log
+    maintenance_mode: full
+
+  tasks:
+   - name: Show maintenance purpose
+     ansible.builtin.debug:
+       msg: >
+         Running system maintenance: refresh package metadata, apply upgrades, ensure
+         Copy Fail related mitigation packages are updated, reboot if required,
+         and verify the active kernel after reboot.
+
+   - name: Fail if distribution family is not supported
+     ansible.builtin.fail:
+       msg: >
+         This maintenance playbook currently supports only Debian/Ubuntu hosts.
+         Detected os_family={{ ansible_facts.os_family }},
+         distribution={{ ansible_facts.distribution }}.
+     when: ansible_facts.os_family != "Debian"
+
+   - name: Fail if maintenance mode is invalid
+     ansible.builtin.fail:
+       msg: "maintenance_mode must be 'full' or 'security_only'. Got: {{ maintenance_mode }}"
+     when: maintenance_mode not in ["full", "security_only"]
+  
+
+   - name: Refresh APT cache
+     ansible.builtin.apt:
+       update_cache: true
+       cache_valid_time: 3600
+
+   - name: Capture upgradable packages before maintenance
+     ansible.builtin.shell: |
+       set -o pipefail
+       apt list --upgradable 2>/dev/null | tail -n +2 || true
+     args:
+       executable: /bin/bash
+     register: upgradable_before
+     changed_when: false
+
+   - name: Upgrade all installed packages
+     ansible.builtin.apt:
+       upgrade: dist
+       autoremove: true
+       autoclean: true
+     register: apt_upgrade_result
+     when: maintenance_mode == "full"
+
+   - name: Upgrade security-sensitive packages only
+     ansible.builtin.apt:
+       name:
+         - linux-generic
+         - linux-image-generic
+         - linux-headers-generic
+         - openssl
+         - ca-certificates
+         - libc6
+         - libssl3
+         - systemd
+       state: latest
+       update_cache: true
+     register: apt_upgrade_result
+     when: maintenance_mode == "security_only"
+
+   - name: Ensure kmod is updated
+     ansible.builtin.apt:
+       name: kmod
+       state: latest
+     register: kmod_upgrade_result
+
+   - name: Capture kernel packages installed
+     ansible.builtin.shell: |
+       set -o pipefail
+       dpkg -l 'linux-image*' 'linux-generic*' | awk '/^ii/ {print $2"="$3}'
+     args:
+       executable: /bin/bash
+     register: installed_kernel_packages
+     changed_when: false
+
+   - name: Check whether reboot is required
+     ansible.builtin.stat:
+       path: /var/run/reboot-required
+     register: reboot_required_file
+
+   - name: Read reboot reason if available
+     ansible.builtin.slurp:
+       path: /var/run/reboot-required.pkgs
+     register: reboot_required_packages
+     when: reboot_required_file.stat.exists
+
+   - name: Write maintenance log before reboot
+     ansible.builtin.copy:
+       dest: "{{ maintenance_log_path }}"
+       mode: "0644"
+       content: |
+         === System maintenance run ===
+         Date (UTC): {{ ansible_date_time.iso8601 }}
+         Host: {{ inventory_hostname }}
+         Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
+         Upgradable packages before maintenance:
+         {% if upgradable_before.stdout_lines | length > 0 %}
+         {% for pkg in upgradable_before.stdout_lines %}
+         - {{ pkg }}
+         {% endfor %}
+         {% else %}
+         - None
+         {% endif %}
+
+         APT upgrade changed: {{ apt_upgrade_result.changed }}
+         kmod updated: {{ kmod_upgrade_result.changed }}
+
+         Installed kernel packages:
+         {% for pkg in installed_kernel_packages.stdout_lines %}
+         - {{ pkg }}
+         {% endfor %}
+
+         Reboot required: {{ reboot_required_file.stat.exists }}
+         {% if reboot_required_file.stat.exists and reboot_required_packages.content is defined %}
+         Reboot-required packages:
+         {% for pkg in (reboot_required_packages.content | b64decode).splitlines() %}
+         - {{ pkg }}
+         {% endfor %}
+         {% endif %}
+
+   - name: Reboot host if required
+     ansible.builtin.reboot:
+       msg: "Reboot triggered by Ansible after system maintenance and security patching"
+       connect_timeout: 10
+       reboot_timeout: 900
+       post_reboot_delay: 30
+       test_command: uptime
+     when: reboot_required_file.stat.exists
+
+   - name: Gather facts again after reboot
+     ansible.builtin.setup:
+     when: reboot_required_file.stat.exists
+
+   - name: Get active kernel version
+     ansible.builtin.command: uname -r
+     register: active_kernel
+     changed_when: false
+
+   - name: Show maintenance summary
+     ansible.builtin.debug:
+       msg:
+         - "Host: {{ inventory_hostname }}"
+         - "Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+         - "APT upgrade changed: {{ apt_upgrade_result.changed }}"
+         - "kmod updated: {{ kmod_upgrade_result.changed }}"
+         - "Reboot required: {{ reboot_required_file.stat.exists }}"
+         - "Active kernel: {{ active_kernel.stdout }}"
+         - "Maintenance log: {{ maintenance_log_path }}"
+         - "Updated packages before apply: {{ upgradable_before.stdout_lines | join('; ') if upgradable_before.stdout_lines | length > 0 else 'None' }}"
