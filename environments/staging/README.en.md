@@ -34,7 +34,6 @@ This README documents **everything under `environments/staging/`** and how it is
 - `vm_name`
 - `vm_zone`
 - `vm_internal_ip`
-- `vm_external_ip`
 
 ### Applied optimization and hardening
 

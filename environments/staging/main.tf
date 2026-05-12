@@ -21,6 +21,10 @@ resource "google_compute_instance" "ubuntu" {
     env     = "staging"
   }
 
+  metadata = {
+    block-project-ssh-keys = "true"
+  }
+
   # Etiqueta para la regla IAP SSH (si no usas IP pública)
   tags = ["iap-ssh"]
 
@@ -61,8 +65,4 @@ output "vm_zone" {
 
 output "vm_internal_ip" {
   value = google_compute_instance.ubuntu.network_interface[0].network_ip
-}
-
-output "vm_external_ip" {
-  value = try(google_compute_instance.ubuntu.network_interface[0].access_config[0].nat_ip, null)
 }
