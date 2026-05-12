@@ -186,6 +186,8 @@ jobs:
 
       - name: TFLint init + lint
         working-directory: ${{ needs.changes.outputs.dir }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tflint --init
           tflint -f compact
