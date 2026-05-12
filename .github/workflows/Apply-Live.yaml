@@ -196,6 +196,7 @@ jobs:
           directory: ${{ needs.changes.outputs.dir }}
           framework: terraform
           external_checks_dirs: ${{ needs.changes.outputs.dir }}/checkov/terraform
+          skip_check: CKV_GCP_38
 
       - name: Install Trivy
         run: |

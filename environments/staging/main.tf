@@ -35,10 +35,6 @@ resource "google_compute_instance" "ubuntu" {
   network_interface {
     network = "default"
     # IP pública opcional
-    dynamic "access_config" {
-      for_each = var.create_public_ip ? [1] : []
-      content {}
-    }
   }
 
   service_account {
@@ -48,6 +44,7 @@ resource "google_compute_instance" "ubuntu" {
 
   shielded_instance_config {
     enable_secure_boot = true
+    enable_vtpm        = true
   }
 }
 
