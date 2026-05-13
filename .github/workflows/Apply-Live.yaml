@@ -245,6 +245,7 @@ jobs:
     env:
       TF_VAR_iap_members: ${{ vars.TF_VAR_IAP_MEMBERS || '[]' }}
       TF_VAR_vm_service_account: ${{ vars.GCP_VM_SERVICE_ACCOUNT }}
+      TF_VAR_environment: ${{ needs.changes.outputs.env }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -353,6 +354,7 @@ jobs:
     env:
       TF_VAR_iap_members: ${{ vars.TF_VAR_IAP_MEMBERS || '[]' }}
       TF_VAR_vm_service_account: ${{ vars.GCP_VM_SERVICE_ACCOUNT }}
+      TF_VAR_environment: ${{ needs.changes.outputs.env }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

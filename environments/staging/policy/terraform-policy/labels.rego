@@ -12,8 +12,10 @@ deny contains msg if {
   msg := sprintf("VM %s sin label obligatoria: %s", [r.name, k])
 }
 
+valid_env_values := {"staging", "dev", "${var.environment}"}
+
 deny contains msg if {
   r := input.resource.google_compute_instance[_]
-  r.labels.env != "staging"
-  msg := sprintf("VM %s con env invalido: %s (esperado: staging)", [r.name, r.labels.env])
+  not valid_env_values[r.labels.env]
+  msg := sprintf("VM %s con env invalido: %s", [r.name, r.labels.env])
 }

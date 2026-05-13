@@ -18,7 +18,7 @@ resource "google_compute_instance" "ubuntu" {
     role    = "demo"
     os      = "ubuntu2204"
     managed = "terraform"
-    env     = "staging"
+    env     = var.environment
   }
 
   metadata = {

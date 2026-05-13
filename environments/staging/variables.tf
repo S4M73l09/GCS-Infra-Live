@@ -11,6 +11,18 @@ variable "zone" {
   type = string
 }
 
+# Variable de Environment
+variable "environment" {
+  type        = string
+  description = "Environment label used for resources and discovery"
+  default     = "staging"
+
+  validation {
+    condition     = contains(["staging", "dev"], var.environment)
+    error_message = "environment must be either staging or dev"
+  }
+}
+
 # OS Login
 variable "oslogin_members" {
   type        = list(string)

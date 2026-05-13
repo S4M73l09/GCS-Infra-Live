@@ -35,7 +35,7 @@ deny contains msg if {
   rc := input.resource_changes[_]
   rc.type == "google_compute_instance"
   is_create_or_update(rc.change.actions)
-  not rc.change.after.shielded_instance_config.enable_secure_boot
+  not rc.change.after.shielded_instance_config[0].enable_secure_boot
   msg := sprintf("Plan sin secure boot en: %s", [rc.address])
 }
 
@@ -48,10 +48,12 @@ deny contains msg if {
   msg := sprintf("Plan en %s sin label obligatoria: %s", [rc.address, k])
 }
 
+valid_plan_env_values := {"staging", "dev"}
+
 deny contains msg if {
   rc := input.resource_changes[_]
   rc.type == "google_compute_instance"
   is_create_or_update(rc.change.actions)
-  rc.change.after.labels.env != "staging"
+  not valid_plan_env_values[rc.change.after.labels.env]
   msg := sprintf("Plan en %s con env invalido: %s", [rc.address, rc.change.after.labels.env])
 }
