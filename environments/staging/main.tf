@@ -23,6 +23,7 @@ resource "google_compute_instance" "ubuntu" {
 
   metadata = {
     block-project-ssh-keys = "true"
+    enable-oslogin         = "TRUE"
   }
 
   # Etiqueta para la regla IAP SSH (si no usas IP pública)
