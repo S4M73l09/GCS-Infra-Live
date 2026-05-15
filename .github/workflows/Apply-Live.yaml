@@ -10,7 +10,9 @@ env:
     branches: ["staging", "main"]
     paths:
       - "environments/staging/**"
+      - "!environments/staging/ansible/**"
       - "environments/dev/**"
+      - "!environments/dev/ansible/**"
       - ".github/workflows/Apply-Live.yaml"
   workflow_dispatch:
     inputs:
@@ -58,7 +60,9 @@ jobs:
           filters: |
             tf:
               - 'environments/staging/**'
+              - '!environments/staging/ansible/**'
               - 'environments/dev/**'
+              - '!environments/dev/ansible/**'
               - '.github/workflows/Apply-Live.yaml'
 
       - name: Pick environment dir (safe)
