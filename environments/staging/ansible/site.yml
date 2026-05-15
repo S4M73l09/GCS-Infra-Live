@@ -135,12 +135,32 @@
     - name: Escaneo de imagenes en accion (HIGH/CRITICAL)
       become: true
       ansible.builtin.command: >
-        trivy image --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item }}
+        trivy image --format table --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item }}
       loop: "{{ running_images.stdout_lines | unique }}"
       when: running_images.stdout_lines | length > 0
       register: running_images_scan
-      failed_when: running_images_scan is failed
+      failed_when: false
       changed_when: false
+
+    - name: Mostrar resultados Trivy por imagen
+      ansible.builtin.debug:
+        msg: |
+          Image: {{ item.item }}
+          {{ item.stdout }}
+      loop: "{{ running_images_scan.results }}"
+      when:
+        - running_images_scan is defined
+        - item.stdout is defined
+
+    - name: Fallar si Trivy encontro vulnerabilidades HIGH/CRITICAL
+      ansible.builtin.fail:
+        msg: "Trivy encontro vulnerabilidades HIGH/CRITICAL en una o mas imagenes en ejecucion"
+      when: >
+        running_images_scan.results
+        | selectattr('rc', 'defined')
+        | selectattr('rc', 'equalto', 1)
+        | list
+        | length > 0
 
 
   handlers:
