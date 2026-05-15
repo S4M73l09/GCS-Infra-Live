@@ -11,24 +11,6 @@
 
   tasks:
 
-    - name: Mitigar Copy Fail bloqueando algif_aead
-      ansible.builtin.copy:
-        dest: /etc/modprobe.d/disable-algif-aead.conf
-        mode: "0644"
-        content: |
-          blacklist algif_aead
-          install algif_aead /bin/false
-
-    - name: Descargar modulo algif_aead si esta cargado
-      ansible.builtin.command: modprobe -r algif_aead
-      register: unload_algif_aead
-      failed_when: false
-      changed_when: unload_algif_aead.rc == 0
-
-    - name: Informar mitigacion temporal de Copy Fail
-      ansible.builtin.debug:
-        msg: "Mitigacion temporal activa para CVE-2026-31431 (Copy Fail): se bloquea el modulo algif_aead hasta disponer de kernel parcheado"
-
     - name: Importar clave GPG de Docker
       ansible.builtin.apt_key:
         url: https://download.docker.com/linux/ubuntu/gpg
@@ -95,9 +77,9 @@
 
     - name: Copiar archivos nginx web
       ansible.builtin.copy:
-       src: web/
-       dest: "{{ web01_base_dir }}/"
-       mode: "0644"
+        src: web/
+        dest: "{{ web01_base_dir }}/"
+        mode: "0644"
       notify: restart monitoring stack
 
     - name: Crear carpeta de Alertmanager
@@ -162,7 +144,7 @@
 
 
   handlers:
-    - name: Reinicio de stack monitoring
+    - name: restart monitoring stack
       community.docker.docker_compose_v2:
         project_src: "{{ monitoring_base_dir }}/docker"
         state: present
