@@ -9,6 +9,17 @@ variable "region" {
 
 variable "zone" {
   type = string
+
+  validation {
+    condition     = contains(var.allowed_zones, var.zone)
+    error_message = "zone must be one of the allowed_zones for this environment."
+  }
+}
+
+variable "allowed_zones" {
+  type        = list(string)
+  description = "Allowed zone for this Environment"
+  default     = ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
 }
 
 # Variable de Environment
@@ -57,25 +68,13 @@ variable "block_project_ssh_keys" {
 # VM
 variable "vm_name" {
   type    = string
-  default = "Ubuntu-dev"
+  default = "Ubuntu-staging"
 }
 
-variable "series" {
+variable "machine_type" {
   type        = string
-  description = "Familia de máquina (e2, n2, n2d...)"
-  default     = "e2"
-}
-
-variable "vcpus" {
-  type        = number
-  description = "Número de vCPU (custom)"
-  default     = 4
-}
-
-variable "memory_mb" {
-  type        = number
-  description = "Memoria en MB (custom)"
-  default     = 8192
+  description = "Machine type used by the VM"
+  default     = "e2-standard-2" # 2 vCPU / 8 GB RAM
 }
 
 variable "disk_size_gb" {

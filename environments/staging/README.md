@@ -23,7 +23,7 @@ Este README documenta **todo lo que vive en `environments/staging/`** y cómo se
 ### Qué despliega
 
 - Una VM Ubuntu 22.04 en GCP (`google_compute_instance.ubuntu`).
-- `machine_type` custom calculado por `series + vcpus + memory_mb`.
+- Tipo de máquina configurable mediante `machine_type` (por defecto `e2-standard-2`).
 - Disco de arranque configurable (`disk_size_gb`, tipo `pd-balanced`).
 - Etiquetas (`labels`) con `env = staging`.
 - Tag de red `iap-ssh` para acceso por IAP.

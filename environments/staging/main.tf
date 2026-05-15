@@ -2,14 +2,13 @@
 # 5) VM Ubuntu 22.04 (4 vCPU / 8 GB)
 #####################################
 locals {
-  vm_machine_type   = "${var.series}-custom-${var.vcpus}-${var.memory_mb}" # ej. e2-custom-4-8192
   ubuntu_2204_image = "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts"
 }
 
 resource "google_compute_instance" "ubuntu" {
   name         = var.vm_name
   zone         = var.zone
-  machine_type = local.vm_machine_type
+  machine_type = var.machine_type
 
   # Permitir que Terraform pare la VM para aplicar cambios gordos.
   allow_stopping_for_update = true

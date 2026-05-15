@@ -285,8 +285,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "--- local.vm_machine_type ---"
-          terraform console <<< 'local.vm_machine_type'
+          echo "--- var.machine_type ---"
+          terraform console <<< 'var.machine_type'
 
       - name: Terraform Plan (save)
         id: planfile

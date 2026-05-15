@@ -23,7 +23,7 @@ This README documents **everything under `environments/staging/`** and how it is
 ### What it deploys
 
 - One Ubuntu 22.04 VM on GCP (`google_compute_instance.ubuntu`).
-- Custom `machine_type` built from `series + vcpus + memory_mb`.
+- Configurable machine type through `machine_type` (defaults to `e2-standard-2`).
 - Configurable boot disk (`disk_size_gb`, `pd-balanced`).
 - Labels including `env = staging`.
 - `iap-ssh` network tag for IAP access.
