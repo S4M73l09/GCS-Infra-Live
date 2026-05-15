@@ -128,7 +128,7 @@
       changed_when: false
 
     - name: Obtener las imagenes del contenedor
-      ansible.builtin.command: docker ps --format '{{.Image}}'
+      ansible.builtin.command: docker ps --format '{% raw %}{{.Image}}{% endraw %}'
       register: running_images
       changed_when: false
 
