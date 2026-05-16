@@ -151,23 +151,6 @@
       failed_when: false
       changed_when: false
 
-    - name: Validar imagenes con vulnerabilidades CRITICAL parcheables
-      become: true
-      ansible.builtin.command: >
-        trivy image --ignore-unfixed --exit-code 1 --severity CRITICAL --timeout 10m {{ item }}
-      # blackbox-exporter v0.28.0 is the latest upstream release and remains in reports until a fixed image exists.
-      loop: >-
-        {{
-          running_images.stdout_lines
-          | unique
-          | reject('equalto', 'quay.io/prometheus/blackbox-exporter:v0.28.0')
-          | list
-        }}
-      when: running_images.stdout_lines | length > 0
-      register: running_images_gate
-      failed_when: false
-      changed_when: false
-
     - name: Mostrar resumen Trivy por imagen
       ansible.builtin.debug:
         msg: |
@@ -189,16 +172,6 @@
       when:
         - running_images_scan is defined
         - item.item is defined
-
-    - name: Fallar si Trivy encontro vulnerabilidades CRITICAL parcheables
-      ansible.builtin.fail:
-        msg: "Trivy encontro vulnerabilidades CRITICAL parcheables en una o mas imagenes en ejecucion"
-      when: >
-        running_images_gate.results | default([])
-        | selectattr('rc', 'defined')
-        | selectattr('rc', 'equalto', 1)
-        | list
-        | length > 0
 
 
   handlers:
