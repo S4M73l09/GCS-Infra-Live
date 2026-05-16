@@ -168,7 +168,7 @@
       become: true
       ansible.builtin.fetch:
         src: "/tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item.item | regex_replace('[/:]', '_') }}.txt"
-        dest: "ansible-runtime/trivy-reports/"
+        dest: "{{ playbook_dir }}/../../../ansible-runtime/trivy-reports/"
         flat: true
       loop: "{{ running_images_scan.results | default([]) }}"
       when:
