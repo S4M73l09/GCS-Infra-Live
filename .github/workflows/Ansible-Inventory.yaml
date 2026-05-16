@@ -512,6 +512,19 @@ jobs:
           GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: ansible-playbook -i ansible-runtime/hosts.ini ${{ needs.resolve-env.outputs.dir }}/ansible/site.yml
 
+      - name: Set Trivy report date
+        if: always()
+        run: echo "TRIVY_REPORT_DATE=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+
+      - name: Upload Trivy image reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports-${{ needs.resolve-env.outputs.env }}-${{ env.TRIVY_REPORT_DATE }}
+          path: ansible-runtime/trivy-reports/
+          retention-days: 1
+          if-no-files-found: warn
+
       - name: Cleanup ephemeral SSH key from instances
         if: always()
         run: |

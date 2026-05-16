@@ -132,31 +132,54 @@
       register: running_images
       changed_when: false
 
+    - name: Crear carpeta para reportes Trivy
+      become: true
+      ansible.builtin.file:
+        path: /tmp/trivy-reports
+        state: directory
+        mode: "0755"
+
     - name: Escaneo de imagenes en accion (HIGH/CRITICAL)
       become: true
-      ansible.builtin.command: >
-        trivy image --format table --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item }}
+      ansible.builtin.shell: |
+        set -o pipefail
+        trivy image --format table --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item | quote }} \
+          | tee "/tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item | regex_replace('[/:]', '_') }}.txt"
+      args:
+        executable: /bin/bash
       loop: "{{ running_images.stdout_lines | unique }}"
       when: running_images.stdout_lines | length > 0
       register: running_images_scan
       failed_when: false
       changed_when: false
 
-    - name: Mostrar resultados Trivy por imagen
+    - name: Mostrar resumen Trivy por imagen
       ansible.builtin.debug:
         msg: |
           Image: {{ item.item }}
-          {{ item.stdout }}
-      loop: "{{ running_images_scan.results }}"
+          Exit code: {{ item.rc }}
+          Report: /tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item.item | regex_replace('[/:]', '_') }}.txt
+      loop: "{{ running_images_scan.results | default([]) }}"
       when:
         - running_images_scan is defined
-        - item.stdout is defined
+        - item.rc is defined
+
+    - name: Descargar reportes Trivy al runner
+      become: true
+      ansible.builtin.fetch:
+        src: "/tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item.item | regex_replace('[/:]', '_') }}.txt"
+        dest: "ansible-runtime/trivy-reports/"
+        flat: true
+      loop: "{{ running_images_scan.results | default([]) }}"
+      when:
+        - running_images_scan is defined
+        - item.item is defined
 
     - name: Fallar si Trivy encontro vulnerabilidades HIGH/CRITICAL
       ansible.builtin.fail:
         msg: "Trivy encontro vulnerabilidades HIGH/CRITICAL en una o mas imagenes en ejecucion"
       when: >
-        running_images_scan.results
+        running_images_scan.results | default([])
         | selectattr('rc', 'defined')
         | selectattr('rc', 'equalto', 1)
         | list
