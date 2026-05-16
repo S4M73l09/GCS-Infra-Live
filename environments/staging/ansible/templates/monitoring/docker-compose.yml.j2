@@ -1,7 +1,7 @@
 services:
   prometheus:
     # prom/prometheus:v3.11.3 + digest + tag
-    image: prom/prometheus:v3.11.3@prom/prometheus:v3.11.3@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
+    image: prom/prometheus:v3.11.3@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
     pull_policy: if_not_present
     container_name: prometheus
     restart: unless-stopped
@@ -39,7 +39,7 @@ services:
 
   alertmanager:
     # prom/alertmanager:v0.32.1 + digest + tag
-    image: prom/alertmanager:v0.32.1@@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
+    image: prom/alertmanager:v0.32.1@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
     pull_policy: if_not_present
     container_name: alertmanager
     restart: unless-stopped
@@ -133,8 +133,8 @@ services:
       - monitoring
 
   web:
-    # nginx:1.29.8-alpine + digest + tag
-    image: nginx:1.29.8-alpine@sha256:3bcf852aed06467cf075c6105892e4d5a6ebbbafa0ce22d35062db9e90ddef4c
+    # nginx:1.30.0-alpine3.23 + digest + tag
+    image: nginx:1.30.0-alpine3.23@sha256:e544ba68e68ddbcdff106010fa82f4ab30378899e78d4ff7aadf4ef5a7c65091
     pull_policy: if_not_present
     container_name: portfolio-web
     cap_drop:
