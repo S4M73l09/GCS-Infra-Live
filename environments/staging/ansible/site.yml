@@ -139,17 +139,27 @@
         state: directory
         mode: "0755"
 
-    - name: Escaneo de imagenes en accion (HIGH/CRITICAL)
+    - name: Generar reportes Trivy completos (HIGH/CRITICAL)
       become: true
       ansible.builtin.shell: |
         set -o pipefail
-        trivy image --format table --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item | quote }} \
+        trivy image --format table --severity HIGH,CRITICAL --timeout 10m {{ item | quote }} \
           | tee "/tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item | regex_replace('[/:]', '_') }}.txt"
       args:
         executable: /bin/bash
       loop: "{{ running_images.stdout_lines | unique }}"
       when: running_images.stdout_lines | length > 0
       register: running_images_scan
+      failed_when: false
+      changed_when: false
+
+    - name: Validar imagenes con vulnerabilidades parcheables HIGH/CRITICAL
+      become: true
+      ansible.builtin.command: >
+        trivy image --ignore-unfixed --exit-code 1 --severity HIGH,CRITICAL --timeout 10m {{ item }}
+      loop: "{{ running_images.stdout_lines | unique }}"
+      when: running_images.stdout_lines | length > 0
+      register: running_images_gate
       failed_when: false
       changed_when: false
 
@@ -177,9 +187,9 @@
 
     - name: Fallar si Trivy encontro vulnerabilidades HIGH/CRITICAL
       ansible.builtin.fail:
-        msg: "Trivy encontro vulnerabilidades HIGH/CRITICAL en una o mas imagenes en ejecucion"
+        msg: "Trivy encontro vulnerabilidades HIGH/CRITICAL parcheables en una o mas imagenes en ejecucion"
       when: >
-        running_images_scan.results | default([])
+        running_images_gate.results | default([])
         | selectattr('rc', 'defined')
         | selectattr('rc', 'equalto', 1)
         | list

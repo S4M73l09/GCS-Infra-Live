@@ -1,7 +1,7 @@
 services:
   prometheus:
-    # prom/prometheus:v3.5.1 + digest + tag
-    image: prom/prometheus:v3.5.1@sha256:4b05278adfb2e2781063781edd7ca88cc649ea5270cea1696618886a37eeb298
+    # prom/prometheus:v3.11.3 + digest + tag
+    image: prom/prometheus:v3.11.3@prom/prometheus:v3.11.3@sha256:e4254400b85610324913f0dc4acf92603d9984e7519414c5a12811aa6146acc3
     pull_policy: if_not_present
     container_name: prometheus
     restart: unless-stopped
@@ -38,8 +38,8 @@ services:
       - monitoring
 
   alertmanager:
-    # prom/alertmanager:v0.30.0 + digest + tag
-    image: prom/alertmanager:v0.30.0@sha256:5ba0431d6cb9bda30640de0a8c2c41ecad12bd78847def3e5907e626ed5a49e9
+    # prom/alertmanager:v0.32.1 + digest + tag
+    image: prom/alertmanager:v0.32.1@@sha256:51a825c2a40acc3e338fdd00d622e01ec090f72be2b3ea46be0839cd47a4d286
     pull_policy: if_not_present
     container_name: alertmanager
     restart: unless-stopped
@@ -65,8 +65,8 @@ services:
       - monitoring
 
   node-exporter:
-    # prom/node-exporter:v1.10.2 + digest + tag
-    image: prom/node-exporter:v1.10.2@sha256:7bcf2839f207d926b908cd3c566c9f1577efb72268062be0c96cd3b17a5cb283
+    # prom/node-exporter:v1.11.1 + digest + tag
+    image: prom/node-exporter:v1.11.1@sha256:e9cff4fc67b1818f8c97adb115b9f12c9a54b533de86765d4a0effc01b357205
     pull_policy: if_not_present
     container_name: node-exporter
     restart: unless-stopped
@@ -92,8 +92,8 @@ services:
       - monitoring
 
   grafana:
-    # grafana/grafana:12.3.1 + digest + tag
-    image: grafana/grafana:12.3.1@sha256:7c064e627d9cb50c3485c9ded5ca0222de89a08e41403322a0c3ca6f1777a8d1
+    # grafana/grafana:13.0.1 + digest + tag
+    image: grafana/grafana:13.0.1@sha256:0f86bada30d65ef9d0183b90c1e2682ac92d53d95da8bed322b984ea78a4a73a
     pull_policy: if_not_present
     container_name: grafana
     restart: unless-stopped

@@ -51,3 +51,7 @@ conftest
 # --- Python (cache de reglas de checkov)
 __pychache__/
 *.py[cod]
+
+# Trivy_reports
+trivy-image-reports-staging*
+trivy-image-reports-dev*
