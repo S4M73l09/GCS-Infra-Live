@@ -71,6 +71,7 @@ Este README documenta **todo lo que vive en `environments/staging/`** y cómo se
 ### Rutas
 
 - `environments/staging/ansible/site.yml`
+- `environments/staging/ansible/trivy-image-scan.yml`
 - `environments/staging/ansible/requirements.yml`
 - `environments/staging/ansible/files/**`
 - `environments/staging/ansible/templates/**`
@@ -87,6 +88,7 @@ Este README documenta **todo lo que vive en `environments/staging/`** y cómo se
   - Blackbox Exporter
   - Nginx
 - Provisioning de ficheros de Prometheus/Grafana y plantillas de compose/alertmanager.
+- Imágenes del stack fijadas con tag explícito + digest para mejorar reproducibilidad y trazabilidad.
 
 ### Optimización aplicada
 
@@ -94,6 +96,14 @@ Este README documenta **todo lo que vive en `environments/staging/`** y cómo se
 - `pull_policy: if_not_present` en servicios de compose para reducir pulls innecesarios.
 - Límites de recursos en servicios clave (p. ej. Prometheus/Grafana).
 - Logs rotados por contenedor (`max-size`, `max-file`).
+- Escaneo de imágenes con Trivy en modo informativo/no bloqueante para conservar visibilidad sin frenar despliegues cuando todavía no existe parche oficial upstream.
+
+### Escaneo de imágenes con Trivy
+
+- `site.yml` genera reportes de imágenes durante el despliegue normal.
+- `trivy-image-scan.yml` permite ejecutar únicamente el escaneo de imágenes, sin redeplegar el stack.
+- Los reportes se descargan en `ansible-runtime/trivy-reports/YYYY-MM-DD/`.
+- El workflow publica un artifact único con la carpeta completa de reportes fechados para facilitar revisión y trazabilidad.
 
 ### Runtime (on-the-fly)
 
@@ -139,6 +149,9 @@ Dicho archivo es activado por el workflow `Asnsible-System-Maintenance.yaml` el 
 - Arranca VMs del entorno si estaban paradas (por label `env`).
 - Genera inventario runtime y ejecuta:
   - `ansible-playbook -i ansible-runtime/hosts.ini environments/staging/ansible/site.yml`
+- En ejecución manual soporta `run_mode`:
+  - `deploy`: despliegue Ansible normal.
+  - `trivy_scan`: solo escaneo de imágenes con `trivy-image-scan.yml`, sin volver a aplicar la configuración completa.
 
 ### Optimización aplicada en workflow Ansible
 
@@ -146,6 +159,7 @@ Dicho archivo es activado por el workflow `Asnsible-System-Maintenance.yaml` el 
 - Checkout dinámico de la rama origen (`head_branch` en `workflow_run`).
 - Warm-up SSH por IAP con reintentos/backoff para reducir fallos intermitentes.
 - Cache de colecciones/pip con clave basada en dependencias reales.
+- Artifact de reportes Trivy con carpeta fechada `YYYY-MM-DD` para conservar varios resultados de forma ordenada.
 
 ## Flujo recomendado de operación
 

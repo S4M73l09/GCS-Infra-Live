@@ -71,6 +71,7 @@ This README documents **everything under `environments/staging/`** and how it is
 ### Paths
 
 - `environments/staging/ansible/site.yml`
+- `environments/staging/ansible/trivy-image-scan.yml`
 - `environments/staging/ansible/requirements.yml`
 - `environments/staging/ansible/files/**`
 - `environments/staging/ansible/templates/**`
@@ -87,6 +88,7 @@ This README documents **everything under `environments/staging/`** and how it is
   - Blackbox Exporter
   - Nginx
 - Prometheus/Grafana files and compose/alertmanager templates provisioning.
+- Stack images pinned with explicit tag + digest to improve reproducibility and traceability.
 
 ### Applied optimization
 
@@ -94,6 +96,14 @@ This README documents **everything under `environments/staging/`** and how it is
 - `pull_policy: if_not_present` in compose services to reduce unnecessary pulls.
 - Resource limits on key services (e.g. Prometheus/Grafana).
 - Container log rotation (`max-size`, `max-file`).
+- Informational/non-blocking Trivy image scanning to keep visibility without blocking deployments when no official upstream fix is available yet.
+
+### Trivy image scanning
+
+- `site.yml` generates image reports during the normal deployment flow.
+- `trivy-image-scan.yml` allows running only the image scan without redeploying the stack.
+- Reports are downloaded under `ansible-runtime/trivy-reports/YYYY-MM-DD/`.
+- The workflow publishes one artifact containing the full dated report folder for easier review and traceability.
 
 ### Runtime (on-the-fly)
 
@@ -138,6 +148,9 @@ This is activated by the workflow `Ansible-System-Maintenance.yaml` which genera
 - Starts environment VMs if they are stopped (by `env` label).
 - Generates runtime inventory and runs:
   - `ansible-playbook -i ansible-runtime/hosts.ini environments/staging/ansible/site.yml`
+- On manual runs it supports `run_mode`:
+  - `deploy`: normal Ansible deployment.
+  - `trivy_scan`: image scan only through `trivy-image-scan.yml`, without reapplying the full configuration.
 
 ### Applied optimization in Ansible workflow
 
@@ -145,6 +158,7 @@ This is activated by the workflow `Ansible-System-Maintenance.yaml` which genera
 - Dynamic branch checkout (`head_branch` on `workflow_run`).
 - IAP SSH warm-up with retries/backoff to reduce intermittent failures.
 - collections/pip cache key based on real dependency files.
+- Trivy report artifact with dated `YYYY-MM-DD` folder layout to keep multiple results ordered.
 
 ## Recommended operation flow
 
