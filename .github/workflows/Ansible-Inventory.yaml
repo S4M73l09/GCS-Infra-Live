@@ -15,6 +15,10 @@ on:
         description: "Solo publicar comandos IAP, sin ejecutar Ansible"
         required: false
         default: "false"
+      run_mode:
+        description: "Modo de ejecucion: deploy o trivy_scan"
+        required: false
+        default: "deploy"
   workflow_run:
     workflows: ["terraform-apply"] # nombres del workflow de apply
     branches: [staging, main]
@@ -500,7 +504,8 @@ jobs:
       - name: Install Ansible Collections
         run: ansible-galaxy collection install -r ${{ needs.resolve-env.outputs.dir }}/ansible/requirements.yml
 
-      - name: Run Ansible
+      - name: Run Ansible deploy
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_mode == 'trivy_scan') }}
         env:
           ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
           ALERTMANAGER_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
@@ -512,15 +517,22 @@ jobs:
           GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: ansible-playbook -i ansible-runtime/hosts.ini ${{ needs.resolve-env.outputs.dir }}/ansible/site.yml
 
+      - name: Run Trivy image scan only
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_mode == 'trivy_scan' }}
+        env:
+          ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
+        run: ansible-playbook -i ansible-runtime/hosts.ini ${{ needs.resolve-env.outputs.dir }}/ansible/trivy-image-scan.yml
+
       - name: Set Trivy report date
+        id: trivy_date
         if: always()
-        run: echo "TRIVY_REPORT_DATE=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
 
       - name: Upload Trivy image reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-image-reports-${{ needs.resolve-env.outputs.env }}-${{ env.TRIVY_REPORT_DATE }}
+          name: trivy-image-reports-${{ needs.resolve-env.outputs.env }}-${{ steps.trivy_date.outputs.date }}
           path: ansible-runtime/trivy-reports/
           retention-days: 1
           if-no-files-found: warn
@@ -536,7 +548,7 @@ jobs:
   publish_tunnel_instructions:
     name: Publish tunnel commands
     needs: [resolve-env, generate_inventory, run_ansible]
-    if: ${{ always() && needs.generate_inventory.result == 'success' && (needs.run_ansible.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.publish_tunnel_only == 'true')) }}
+    if: ${{ always() && needs.generate_inventory.result == 'success' && (needs.run_ansible.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.publish_tunnel_only == 'true')) && !(github.event_name == 'workflow_dispatch' && inputs.run_mode == 'trivy_scan') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download inventory artifact

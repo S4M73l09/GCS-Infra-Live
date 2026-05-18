@@ -135,7 +135,7 @@
     - name: Crear carpeta para reportes Trivy
       become: true
       ansible.builtin.file:
-        path: /tmp/trivy-reports
+        path: "/tmp/trivy-reports/{{ ansible_date_time.date }}"
         state: directory
         mode: "0755"
 
@@ -143,7 +143,7 @@
       become: true
       ansible.builtin.command: >
         trivy image --format table --severity HIGH,CRITICAL --timeout 10m
-        --output /tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item | regex_replace('[/:]', '_') }}.txt
+        --output /tmp/trivy-reports/{{ ansible_date_time.date }}/{{ item | regex_replace('[/:]', '_') }}.txt
         {{ item }}
       loop: "{{ running_images.stdout_lines | unique }}"
       when: running_images.stdout_lines | length > 0
@@ -156,7 +156,7 @@
         msg: |
           Image: {{ item.item }}
           Exit code: {{ item.rc }}
-          Report: /tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item.item | regex_replace('[/:]', '_') }}.txt
+          Report: /tmp/trivy-reports/{{ ansible_date_time.date }}/{{ item.item | regex_replace('[/:]', '_') }}.txt
       loop: "{{ running_images_scan.results | default([]) }}"
       when:
         - running_images_scan is defined
@@ -165,8 +165,8 @@
     - name: Descargar reportes Trivy al runner
       become: true
       ansible.builtin.fetch:
-        src: "/tmp/trivy-reports/{{ ansible_date_time.date }}_{{ item.item | regex_replace('[/:]', '_') }}.txt"
-        dest: "{{ playbook_dir }}/../../../ansible-runtime/trivy-reports/"
+        src: "/tmp/trivy-reports/{{ ansible_date_time.date }}/{{ item.item | regex_replace('[/:]', '_') }}.txt"
+        dest: "{{ playbook_dir }}/../../../ansible-runtime/trivy-reports/{{ ansible_date_time.date }}/"
         flat: true
       loop: "{{ running_images_scan.results | default([]) }}"
       when:
