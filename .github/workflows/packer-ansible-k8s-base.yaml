@@ -1,0 +1,226 @@
+name: packer-ansible-k8s-base
+
+on:
+  workflow_dispatch:
+    inputs:
+      check_mode:
+        description: "Ejecutar k8s-base en check mode"
+        required: false
+        type: boolean
+        default: false
+      stop_after_run:
+        description: "Apagar la VM al finalizar (solo workflow_dispatch)"
+        required: false
+        type: boolean
+        default: false
+  workflow_run:
+    workflows: ["packer-ansible-bootstrap"]
+    branches: [staging]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: packer-ansible-k8s-base-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run-k8s-base:
+    name: Run k8s-base playbook (runtime inventory)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      TF_DIR: environments/packer-dev/terraform-net
+      ANSIBLE_DIR: environments/packer-dev/ansible
+      GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
+      GCP_ZONE: ${{ vars.GCP_INFRA_ZONE }}
+
+    steps:
+      - name: Checkout (manual)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/checkout@v4
+
+      - name: Checkout (from triggering workflow SHA)
+        if: ${{ github.event_name == 'workflow_run' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Auth to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+          terraform_wrapper: false
+
+      - name: Resolve VM from Terraform state
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          set -euo pipefail
+          terraform init -input=false -lockfile=readonly
+          VM_NAME="$(terraform output -raw vm_name)"
+          if [[ -z "${VM_NAME}" ]]; then
+            echo "No se pudo resolver vm_name desde Terraform output." >&2
+            exit 1
+          fi
+          echo "GCP_VM_NAME=${VM_NAME}" >> "$GITHUB_ENV"
+
+      - name: Ensure VM is running
+        run: |
+          set -euo pipefail
+          STATUS="$(gcloud compute instances describe "${GCP_VM_NAME}" --project "${GCP_PROJECT}" --zone "${GCP_ZONE}" --format='value(status)')"
+          echo "Estado actual VM: ${STATUS}"
+          if [[ "${STATUS}" != "RUNNING" ]]; then
+            echo "Arrancando VM ${GCP_VM_NAME}..."
+            gcloud compute instances start "${GCP_VM_NAME}" --project "${GCP_PROJECT}" --zone "${GCP_ZONE}" --quiet
+          fi
+
+      - name: Generate ephemeral SSH key + OS Login registration
+        run: |
+          set -euo pipefail
+          RUNTIME_DIR="${RUNNER_TEMP}/ansible-runtime"
+          mkdir -p "${RUNTIME_DIR}"
+
+          SSH_KEY_PATH="${RUNTIME_DIR}/gha_ansible"
+          ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "gha-ansible@gha"
+          chmod 600 "${SSH_KEY_PATH}"
+
+          gcloud compute os-login ssh-keys add \
+            --key-file="${SSH_KEY_PATH}.pub" \
+            --ttl=30m
+
+          SSH_USER="$(gcloud compute os-login describe-profile --format='value(posixAccounts[0].username)')"
+          if [[ -z "${SSH_USER}" ]]; then
+            echo "No se pudo resolver usuario POSIX de OS Login" >&2
+            exit 1
+          fi
+
+          echo "RUNTIME_DIR=${RUNTIME_DIR}" >> "$GITHUB_ENV"
+          echo "ANSIBLE_SSH_KEY_PATH=${SSH_KEY_PATH}" >> "$GITHUB_ENV"
+          echo "ANSIBLE_SSH_USER=${SSH_USER}" >> "$GITHUB_ENV"
+
+      - name: Build runtime inventory + ansible.cfg
+        run: |
+          set -euo pipefail
+          cat > "${RUNTIME_DIR}/hosts.ini" <<EOF_INV
+          [k3s]
+          ${GCP_VM_NAME} ansible_user=${ANSIBLE_SSH_USER} ansible_host=127.0.0.1 ansible_ssh_private_key_file=${ANSIBLE_SSH_KEY_PATH} ansible_ssh_common_args='-o ProxyCommand="gcloud compute start-iap-tunnel ${GCP_VM_NAME} 22 --project=${GCP_PROJECT} --zone=${GCP_ZONE} --listen-on-stdin --quiet" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o CheckHostIP=no'
+          EOF_INV
+
+          cat > "${RUNTIME_DIR}/ansible.cfg" <<EOF_CFG
+          [defaults]
+          inventory = ${RUNTIME_DIR}/hosts.ini
+          host_key_checking = False
+          stdout_callback = yaml
+          retry_files_enabled = False
+          timeout = 30
+          EOF_CFG
+
+      - name: Setup Python + Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('environments/packer-dev/ansible/requirements.txt') }}
+
+      - name: Cache Ansible collections
+        uses: actions/cache@v4
+        with:
+          path: ~/.ansible/collections
+          key: ansible-col-${{ runner.os }}-${{ hashFiles('environments/packer-dev/ansible/requirements.yml') }}
+
+      - name: Install Ansible
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          if [[ -f "${ANSIBLE_DIR}/requirements.txt" ]]; then
+            pip install -r "${ANSIBLE_DIR}/requirements.txt"
+          else
+            pip install ansible-core
+          fi
+
+      - name: Install Ansible collections (optional)
+        run: |
+          set -euo pipefail
+          if [[ -s "${ANSIBLE_DIR}/requirements.yml" ]]; then
+            ansible-galaxy collection install -r "${ANSIBLE_DIR}/requirements.yml"
+          else
+            echo "requirements.yml vacío o ausente, se omite instalación de colecciones."
+          fi
+
+      - name: Install linters
+        run: pipx install ansible-lint && pipx install yamllint
+
+      - name: yamllint
+        run: yamllint environments/packer-dev/ansible
+
+      - name: ansible-lint
+        run: ansible-lint environments/packer-dev/ansible/playbooks/*.yml
+
+      - name: Ansible syntax check
+        run: ansible-playbook "${ANSIBLE_DIR}/playbooks/k3s-base.yml" --syntax-check
+
+      - name: Run k3s-base playbook
+        env:
+          CHECK_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.check_mode || false }}
+        run: |
+          set -euo pipefail
+          export ANSIBLE_CONFIG="${RUNTIME_DIR}/ansible.cfg"
+          PLAYBOOK_PATH="${ANSIBLE_DIR}/playbooks/k3s-base.yml"
+
+          if [[ "${CHECK_MODE}" == "true" ]]; then
+            ansible-playbook "${PLAYBOOK_PATH}" --check --diff
+          else
+            ansible-playbook "${PLAYBOOK_PATH}"
+          fi
+
+      - name: Health check k8s-base (namespace)
+        run: |
+          set -euo pipefail
+          export ANSIBLE_CONFIG="${RUNTIME_DIR}/ansible.cfg"
+          ansible k3s -b -m ansible.builtin.command -a "k3s kubectl get ns apps-staging -o name"
+
+      - name: Stop VM after run (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.stop_after_run }}
+        run: |
+          set -euo pipefail
+          gcloud compute instances stop "${GCP_VM_NAME}" --project "${GCP_PROJECT}" --zone "${GCP_ZONE}" --quiet
+
+      - name: Publish run summary
+        if: always()
+        env:
+          CHECK_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.check_mode || false }}
+          STOP_AFTER_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.stop_after_run || false }}
+        run: |
+          {
+            echo "## Packer Ansible k8s-base"
+            echo "- VM: ${GCP_VM_NAME:-unknown}"
+            echo "- Proyecto: ${GCP_PROJECT}"
+            echo "- Zona: ${GCP_ZONE}"
+            echo "- Playbook: playbooks/k3s-base.yml"
+            echo "- Check mode: ${CHECK_MODE}"
+            echo "- Stop after run: ${STOP_AFTER_RUN}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup runtime secrets
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/ansible-runtime"
