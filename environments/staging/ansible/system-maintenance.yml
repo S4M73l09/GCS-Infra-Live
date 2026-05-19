@@ -95,39 +95,9 @@
      register: reboot_required_packages
      when: reboot_required_file.stat.exists
 
-   - name: Write maintenance log before reboot
-     ansible.builtin.copy:
-       dest: "{{ maintenance_log_path }}"
-       mode: "0644"
-       content: |
-         === System maintenance run ===
-         Date (UTC): {{ ansible_date_time.iso8601 }}
-         Host: {{ inventory_hostname }}
-         Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
-         Upgradable packages before maintenance:
-         {% if upgradable_before.stdout_lines | length > 0 %}
-         {% for pkg in upgradable_before.stdout_lines %}
-         - {{ pkg }}
-         {% endfor %}
-         {% else %}
-         - None
-         {% endif %}
-
-         APT upgrade changed: {{ apt_upgrade_result.changed }}
-         kmod updated: {{ kmod_upgrade_result.changed }}
-
-         Installed kernel packages:
-         {% for pkg in installed_kernel_packages.stdout_lines %}
-         - {{ pkg }}
-         {% endfor %}
-
-         Reboot required: {{ reboot_required_file.stat.exists }}
-         {% if reboot_required_file.stat.exists and reboot_required_packages.content is defined %}
-         Reboot-required packages:
-         {% for pkg in (reboot_required_packages.content | b64decode).splitlines() %}
-         - {{ pkg }}
-         {% endfor %}
-         {% endif %}
+   - name: Track reboot decision
+     ansible.builtin.set_fact:
+       maintenance_reboot_performed: "{{ reboot_required_file.stat.exists }}"
 
    - name: Reboot host if required
      ansible.builtin.reboot:
@@ -147,14 +117,57 @@
      register: active_kernel
      changed_when: false
 
+   - name: Write final maintenance log
+     ansible.builtin.copy:
+       dest: "{{ maintenance_log_path }}"
+       mode: "0644"
+       content: |
+         === System maintenance run ===
+         Date (UTC): {{ ansible_date_time.iso8601 }}
+         Host: {{ inventory_hostname }}
+         Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
+         Maintenance mode: {{ maintenance_mode }}
+
+         Upgradable packages before maintenance:
+         {% if upgradable_before.stdout_lines | length > 0 %}
+         {% for pkg in upgradable_before.stdout_lines %}
+         - {{ pkg }}
+         {% endfor %}
+         {% else %}
+         - None
+         {% endif %}
+
+         APT upgrade changed: {{ apt_upgrade_result.changed }}
+         kmod updated: {{ kmod_upgrade_result.changed }}
+
+         Installed kernel packages:
+         {% for pkg in installed_kernel_packages.stdout_lines %}
+         - {{ pkg }}
+         {% endfor %}
+
+         Reboot required before completion: {{ reboot_required_file.stat.exists }}
+         Reboot performed by playbook: {{ maintenance_reboot_performed }}
+         {% if reboot_required_file.stat.exists and reboot_required_packages.content is defined %}
+
+         Reboot-required packages:
+         {% for pkg in (reboot_required_packages.content | b64decode).splitlines() %}
+         - {{ pkg }}
+         {% endfor %}
+         {% endif %}
+
+         Active kernel after maintenance: {{ active_kernel.stdout }}
+         Maintenance completed: true
+
    - name: Show maintenance summary
      ansible.builtin.debug:
        msg:
          - "Host: {{ inventory_hostname }}"
          - "Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
+         - "Maintenance mode: {{ maintenance_mode }}"
          - "APT upgrade changed: {{ apt_upgrade_result.changed }}"
          - "kmod updated: {{ kmod_upgrade_result.changed }}"
-         - "Reboot required: {{ reboot_required_file.stat.exists }}"
-         - "Active kernel: {{ active_kernel.stdout }}"
+         - "Reboot required before completion: {{ reboot_required_file.stat.exists }}"
+         - "Reboot performed: {{ maintenance_reboot_performed }}"
+         - "Active kernel after maintenance: {{ active_kernel.stdout }}"
          - "Maintenance log: {{ maintenance_log_path }}"
          - "Updated packages before apply: {{ upgradable_before.stdout_lines | join('; ') if upgradable_before.stdout_lines | length > 0 else 'None' }}"
