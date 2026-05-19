@@ -78,7 +78,7 @@
    - name: Capture kernel packages installed
      ansible.builtin.shell: |
        set -o pipefail
-       dpkg -l 'linux-image*' 'linux-generic*' | awk '/^ii/ {print $2"="$3}'
+       dpkg -l 'linux-image*' 'linux-gcp*' 2>/dev/null | awk '/^ii/ {print $2"="$3}' || true
      args:
        executable: /bin/bash
      register: installed_kernel_packages
