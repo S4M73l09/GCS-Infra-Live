@@ -346,3 +346,42 @@ jobs:
             -i ansible-runtime/hosts.ini \
             "${{ needs.resolve_context.outputs.playbook }}" \
             -e maintenance_mode="${{ inputs.maintenance_mode }}"
+
+      - name: Fetch maintenance logs
+        if: always()
+        env:
+          ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
+        run: |
+          set -euo pipefail
+
+          mkdir -p ansible-runtime/maintenance-logs
+
+          ansible all \
+            -i ansible-runtime/hosts.ini \
+            -m fetch \
+            -a "src=/var/log/system-maintenance.log dest=ansible-runtime/maintenance-logs/ flat=no" \
+            || true
+
+      - name: Upload maintenance logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-maintenance-logs-${{ needs.resolve_context.outputs.env }}-${{ github.run_number }}
+          path: ansible-runtime/maintenance-logs/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Maintenance summary
+        if: always()
+        run: |
+          {
+            echo "## System Maintenance Summary"
+            echo ""
+            echo "- Environment: \`${{ needs.resolve_context.outputs.env }}\`"
+            echo "- Branch: \`${{ github.ref_name }}\`"
+            echo "- Mode: \`${{ inputs.maintenance_mode }}\`"
+            echo "- Playbook: \`${{ needs.resolve_context.outputs.playbook }}\`"
+            echo "- Artifact: \`system-maintenance-logs-${{ needs.resolve_context.outputs.env }}-${{ github.run_number }}\`"
+            echo ""
+            echo "The full package/kernel maintenance details are available in the uploaded artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
