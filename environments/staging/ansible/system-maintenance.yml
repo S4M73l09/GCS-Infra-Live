@@ -10,6 +10,11 @@
     maintenance_mode: full
 
   tasks:
+   - name: Capture maintenance start time
+     ansible.builtin.command: date -u +"%Y-%m-%dT%H:%M:%SZ"
+     register: maintenance_started_at
+     changed_when: false
+
    - name: Show maintenance purpose
      ansible.builtin.debug:
        msg: >
@@ -75,6 +80,15 @@
        state: latest
      register: kmod_upgrade_result
 
+   - name: Capture upgradable packages after maintenance
+     ansible.builtin.shell: |
+       set -o pipefail
+       apt list --upgradable 2>/dev/null | tail -n +2 || true
+     args:
+       executable: /bin/bash
+     register: upgradable_after
+     changed_when: false
+
    - name: Capture kernel packages installed
      ansible.builtin.shell: |
        set -o pipefail
@@ -117,18 +131,28 @@
      register: active_kernel
      changed_when: false
 
+   - name: Capture maintenance completion time
+     ansible.builtin.command: date -u +"%Y-%m-%dT%H:%M:%SZ"
+     register: maintenance_completed_at
+     changed_when: false
+
    - name: Write final maintenance log
      ansible.builtin.copy:
        dest: "{{ maintenance_log_path }}"
        mode: "0644"
        content: |
          === System maintenance run ===
-         Date (UTC): {{ ansible_date_time.iso8601 }}
          Host: {{ inventory_hostname }}
          Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}
          Maintenance mode: {{ maintenance_mode }}
+         Started at (UTC): {{ maintenance_started_at.stdout }}
+         Completed at (UTC): {{ maintenance_completed_at.stdout }}
 
-         Upgradable packages before maintenance:
+         Package changes:
+         - APT upgrade changed: {{ apt_upgrade_result.changed }}
+         - kmod updated: {{ kmod_upgrade_result.changed }}
+
+         Packages upgradable before maintenance:
          {% if upgradable_before.stdout_lines | length > 0 %}
          {% for pkg in upgradable_before.stdout_lines %}
          - {{ pkg }}
@@ -137,26 +161,34 @@
          - None
          {% endif %}
 
-         APT upgrade changed: {{ apt_upgrade_result.changed }}
-         kmod updated: {{ kmod_upgrade_result.changed }}
-
-         Installed kernel packages:
-         {% for pkg in installed_kernel_packages.stdout_lines %}
+         Packages still upgradable after maintenance:
+         {% if upgradable_after.stdout_lines | length > 0 %}
+         {% for pkg in upgradable_after.stdout_lines %}
          - {{ pkg }}
          {% endfor %}
+         {% else %}
+         - None
+         {% endif %}
 
-         Reboot required before completion: {{ reboot_required_file.stat.exists }}
-         Reboot performed by playbook: {{ maintenance_reboot_performed }}
+         Kernel:
+         - Active kernel after maintenance: {{ active_kernel.stdout }}
+         - Installed kernel packages:
+         {% for pkg in installed_kernel_packages.stdout_lines %}
+           - {{ pkg }}
+         {% endfor %}
+
+         Reboot:
+         - Required before completion: {{ reboot_required_file.stat.exists }}
+         - Performed by playbook: {{ maintenance_reboot_performed }}
          {% if reboot_required_file.stat.exists and reboot_required_packages.content is defined %}
-
-         Reboot-required packages:
+         - Packages requiring reboot:
          {% for pkg in (reboot_required_packages.content | b64decode).splitlines() %}
-         - {{ pkg }}
+           - {{ pkg }}
          {% endfor %}
          {% endif %}
 
-         Active kernel after maintenance: {{ active_kernel.stdout }}
-         Maintenance completed: true
+         Status:
+         - Maintenance completed: true
 
    - name: Show maintenance summary
      ansible.builtin.debug:
@@ -164,6 +196,8 @@
          - "Host: {{ inventory_hostname }}"
          - "Distribution: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }}"
          - "Maintenance mode: {{ maintenance_mode }}"
+         - "Started at (UTC): {{ maintenance_started_at.stdout }}"
+         - "Completed at (UTC): {{ maintenance_completed_at.stdout }}"
          - "APT upgrade changed: {{ apt_upgrade_result.changed }}"
          - "kmod updated: {{ kmod_upgrade_result.changed }}"
          - "Reboot required before completion: {{ reboot_required_file.stat.exists }}"
@@ -171,3 +205,4 @@
          - "Active kernel after maintenance: {{ active_kernel.stdout }}"
          - "Maintenance log: {{ maintenance_log_path }}"
          - "Updated packages before apply: {{ upgradable_before.stdout_lines | join('; ') if upgradable_before.stdout_lines | length > 0 else 'None' }}"
+         - "Packages still upgradable after maintenance: {{ upgradable_after.stdout_lines | join('; ') if upgradable_after.stdout_lines | length > 0 else 'None' }}"
