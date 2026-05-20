@@ -1,3 +1,8 @@
+# What is the project?
+
+This project is based on a fully controlled and automated infrastructure deployment on the `Google Cloud platform` cloud platform ensuring security, scalability, monitoring and control by **environments/branches**.
+
+
 # Infra Live - Environment Index
 
 This README is the environment entry point for the `staging` branch.

@@ -1,3 +1,8 @@
+# ¿Que es este proyecto?
+
+Este proyecto se basa en un despliegue de infraestructura totalmente controlado y automatizado en la plataforma en la nube de `Google Cloud platform` asegurando seguridad, escalabilidad, monitorizacion y control por **entornos/ramas**.
+
+
 # Infra Live - Índice de Entornos
 
 Este README funciona como punto de entrada por entorno en la rama `staging`.
