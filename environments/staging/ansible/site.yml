@@ -1,0 +1,182 @@
+---
+- name: Configurar stack de monitoring (Web + Prometheus + Alertmanager + Grafana)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    monitoring_base_dir: /opt/monitoring
+    web01_base_dir: /opt/web01
+    ansible_python_interpreter: /usr/bin/python3
+
+  tasks:
+
+    - name: Importar clave GPG de Docker
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Añadir repositorio de Docker
+      ansible.builtin.apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+        state: present
+
+    - name: Instalar Docker y plugin Compose
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Asegurar que Docker está activo
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Crear carpeta base de monitoring
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Crear carpeta docker para monitoring
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}/docker"
+        state: directory
+        mode: "0755"
+
+    - name: Crear carpeta base de web
+      ansible.builtin.file:
+        path: "{{ web01_base_dir  }}"
+        state: directory
+        mode: "0755"
+
+    - name: Validar secrets requeridos para Grafana
+      ansible.builtin.assert:
+        that:
+          - lookup('env', 'GRAFANA_ADMIN_USER') | length > 0
+          - lookup('env', 'GRAFANA_ADMIN_PASSWORD') | length >= 16
+        fail_msg: "Faltan GRAFANA_ADMIN_USER/GRAFANA_ADMIN_PASSWORD o la password es demasiado corta"
+      no_log: true
+
+    - name: Plantilla de docker-compose.yml para monitoring
+      ansible.builtin.template:
+        src: templates/monitoring/docker-compose.yml.j2
+        dest: "{{ monitoring_base_dir }}/docker/docker-compose.yml"
+        mode: "0600"
+      notify: restart monitoring stack
+
+    - name: Copiar configuración de Prometheus
+      ansible.builtin.copy:
+        src: files/monitoring/prometheus/
+        dest: "{{ monitoring_base_dir }}/prometheus/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar archivos nginx web
+      ansible.builtin.copy:
+        src: web/
+        dest: "{{ web01_base_dir }}/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Crear carpeta de Alertmanager
+      ansible.builtin.file:
+        path: "{{ monitoring_base_dir }}/alertmanager"
+        state: directory
+        mode: "0755"
+
+    - name: Plantilla de configuracion de Alertmanager
+      ansible.builtin.template:
+        src: templates/monitoring/alertmanager.yml.j2
+        dest: "{{ monitoring_base_dir }}/alertmanager/alertmanager.yml"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Copiar provisioning de Grafana
+      ansible.builtin.copy:
+        src: files/monitoring/grafana/
+        dest: "{{ monitoring_base_dir }}/grafana/"
+        mode: "0644"
+      notify: restart monitoring stack
+
+    - name: Asegurar que el stack de monitoring está levantado
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_base_dir }}/docker"
+        state: present
+        remove_orphans: true
+
+    - name: Instalacion Trivy
+      become: true
+      ansible.builtin.shell: |
+        set -euo pipefail
+        apt-get update
+        apt-get install -y wget gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+          | gpg --dearmor \
+          | tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+          | tee /etc/apt/sources.list.d/trivy.list
+        apt-get update
+        apt-get install -y trivy
+        trivy --version
+      args:
+        executable: /bin/bash
+        creates: /usr/bin/trivy
+      changed_when: false
+
+    - name: Obtener las imagenes del contenedor
+      ansible.builtin.command: docker ps --format '{% raw %}{{.Image}}{% endraw %}'
+      register: running_images
+      changed_when: false
+
+    - name: Crear carpeta para reportes Trivy
+      become: true
+      ansible.builtin.file:
+        path: "/tmp/trivy-reports/{{ ansible_date_time.date }}"
+        state: directory
+        mode: "0755"
+
+    - name: Generar reportes Trivy completos (HIGH/CRITICAL)
+      become: true
+      ansible.builtin.command: >
+        trivy image --format table --severity HIGH,CRITICAL --timeout 10m
+        --output /tmp/trivy-reports/{{ ansible_date_time.date }}/{{ item | regex_replace('[/:]', '_') }}.txt
+        {{ item }}
+      loop: "{{ running_images.stdout_lines | unique }}"
+      when: running_images.stdout_lines | length > 0
+      register: running_images_scan
+      failed_when: false
+      changed_when: false
+
+    - name: Mostrar resumen Trivy por imagen
+      ansible.builtin.debug:
+        msg: |
+          Image: {{ item.item }}
+          Exit code: {{ item.rc }}
+          Report: /tmp/trivy-reports/{{ ansible_date_time.date }}/{{ item.item | regex_replace('[/:]', '_') }}.txt
+      loop: "{{ running_images_scan.results | default([]) }}"
+      when:
+        - running_images_scan is defined
+        - item.rc is defined
+
+    - name: Descargar reportes Trivy al runner
+      become: true
+      ansible.builtin.fetch:
+        src: "/tmp/trivy-reports/{{ ansible_date_time.date }}/{{ item.item | regex_replace('[/:]', '_') }}.txt"
+        dest: "{{ playbook_dir }}/../../../ansible-runtime/trivy-reports/{{ ansible_date_time.date }}/"
+        flat: true
+      loop: "{{ running_images_scan.results | default([]) }}"
+      when:
+        - running_images_scan is defined
+        - item.item is defined
+
+
+  handlers:
+    - name: restart monitoring stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_base_dir }}/docker"
+        state: present
+        remove_orphans: true
