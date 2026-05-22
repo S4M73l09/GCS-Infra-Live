@@ -10,10 +10,18 @@ on:
       env:
         description: "Environment label (e.g. dev)"
         required: false
-        default: "dev"
+        default: "auto"
+      publish_tunnel_only:
+        description: "Solo publicar comandos IAP, sin ejecutar Ansible"
+        required: false
+        default: "false"
+      run_mode:
+        description: "Modo de ejecucion: deploy o trivy_scan"
+        required: false
+        default: "deploy"
   workflow_run:
     workflows: ["terraform-apply"] # nombres del workflow de apply
-    branches: [main]
+    branches: [staging, main]
     types: [completed]
 
 permissions:
@@ -34,6 +42,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       env: ${{ steps.set-env.outputs.env }}
+      dir: ${{ steps.set-env.outputs.dir }}
     permissions:
       actions: read # Requerido para descargar artefactos de otros workflows
     steps:
@@ -47,8 +56,56 @@ jobs:
       - name: Read env from file
         id: set-env
         run: |
+          set -euo pipefail
+
+          resolve_dir() {
+            case "$1" in
+              staging)
+                echo "environments/staging"
+                ;;
+              dev)
+                echo "environments/dev"
+                ;;
+              *)
+                echo "Unsupported environment '$1'" >&2
+                exit 1
+                ;;
+            esac
+          }
+
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            echo "env=${{ inputs.env }}" >> "$GITHUB_OUTPUT"
+            INPUT_ENV="${{ inputs.env }}"
+            BRANCH="${GITHUB_REF_NAME}"
+
+            if [ -z "$INPUT_ENV" ] || [ "$INPUT_ENV" = "auto" ]; then
+              case "$BRANCH" in
+                staging)
+                  ENV="staging"
+                  ;;
+                main)
+                  ENV="dev"
+                  ;;
+                *)
+                  echo "Unable to auto-detect environment from branch '$BRANCH'. Use env=staging or env=dev." >&2
+                  exit 1
+                  ;;
+              esac
+            else
+              case "$INPUT_ENV" in
+                staging|dev)
+                  ENV="$INPUT_ENV"
+                  ;;
+                *)
+                  echo "Invalid env='$INPUT_ENV'. Allowed: auto, staging, dev." >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+
+            DIR="$(resolve_dir "$ENV")"
+            echo "env=$ENV" >> "$GITHUB_OUTPUT"
+            echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+            echo "Resolved env=$ENV dir=$DIR"
             exit 0
           fi
 
@@ -56,7 +113,20 @@ jobs:
             echo "Missing env.txt from triggering workflow" >&2
             exit 1
           fi
-          echo "env=$(cat env.txt)" >> $GITHUB_OUTPUT
+
+          ENV="$(cat env.txt)"
+          case "$ENV" in
+            staging|dev)
+              DIR="$(resolve_dir "$ENV")"
+              echo "env=$ENV" >> "$GITHUB_OUTPUT"
+              echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+              echo "Resolved env=$ENV dir=$DIR"
+              ;;
+            *)
+              echo "Invalid env from artifact: '$ENV'. Allowed: staging, dev." >&2
+              exit 1
+              ;;
+          esac
 
   # ──────────────────────────────────────────────────────────────
   # 1) Generar inventario para el entorno detectado, y verificar si las instances están arrancadas.
@@ -65,6 +135,7 @@ jobs:
     name: Generate inventory
     needs: resolve-env
     runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.env }}
     defaults:
       run:
         shell: bash
@@ -78,7 +149,7 @@ jobs:
           fetch-depth: 0
 
       - name: Auth GCP (OIDC)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
@@ -224,7 +295,7 @@ jobs:
 
             ZONE_ARG=$(echo "${INSTANCE_ZONE}" | awk -F/ '{print $NF}')
             echo "Warming up SSH access for ${INSTANCE_NAME} (${ZONE_ARG})"
-            for attempt in $(seq 1 4); do
+            for attempt in $(seq 1 10); do
               if ssh \
                 -i "${ANSIBLE_SSH_KEY_PATH}" \
                 -o StrictHostKeyChecking=no \
@@ -236,13 +307,15 @@ jobs:
                 break
               fi
 
-              if [ "$attempt" -eq 4 ]; then
-                echo "ERROR: SSH warm-up failed for ${INSTANCE_NAME} after 4 attempts"
+              if [ "$attempt" -eq 10 ]; then
+                echo "ERROR: SSH warm-up failed for ${INSTANCE_NAME} after 10 attempts"
                 exit 1
               fi
 
-              echo "Retrying SSH warm-up for ${INSTANCE_NAME} (attempt $((attempt + 1)))"
-              sleep $((attempt * 2))
+              SLEEP_SECONDS=$((attempt * 10))
+              echo "Retrying SSH warm-up for ${INSTANCE_NAME} (attempt $((attempt + 1))) after ${SLEEP_SECONDS}s"
+              sleep "${SLEEP_SECONDS}"
+
             done
           done < ansible-runtime/hosts_with_zones.list
 
@@ -308,7 +381,6 @@ jobs:
           path: |
             ansible-runtime/hosts.ini
             ansible-runtime/ansible.cfg
-            ansible-runtime/gha_ansible
             ansible-runtime/gha_ansible.pub
             ansible-runtime/ssh_user.txt
             ansible-runtime/hosts_with_zones.list
@@ -320,7 +392,9 @@ jobs:
   run_ansible:
     name: Run Ansible
     needs: [resolve-env, generate_inventory]
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_tunnel_only != 'true' }}
     runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.env }}
     defaults:
       run:
         shell: bash
@@ -334,7 +408,7 @@ jobs:
           fetch-depth: 0
 
       - name: Auth GCP (OIDC)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
@@ -384,18 +458,40 @@ jobs:
           name: ansible-inventory-${{ needs.resolve-env.outputs.env }}
           path: ansible-runtime
 
-      - name: Prepare downloaded SSH key
+      - name: Generate ephemeral SSH keypair
         run: |
           set -euo pipefail
-          if [ ! -f ansible-runtime/gha_ansible ]; then
-            echo "Missing SSH private key in artifact"
-            exit 1
-          fi
-          chmod 600 ansible-runtime/gha_ansible
+          SSH_KEY_PATH="ansible-runtime/gha_ansible"
+          rm -f "${SSH_KEY_PATH}" "${SSH_KEY_PATH}.pub"
+          ssh-keygen -t ed25519 -f "${SSH_KEY_PATH}" -N "" -C "gha-ansible@gha"
+          chmod 600 "${SSH_KEY_PATH}"
+          echo "ANSIBLE_SSH_KEY_PATH=${SSH_KEY_PATH}" >> "$GITHUB_ENV"
+
+      - name: Register SSH key with OS Login
+        run: |
+          set -euo pipefail
+          : "${ANSIBLE_SSH_KEY_PATH:?ANSIBLE_SSH_KEY_PATH is required}"
+
+          gcloud compute os-login ssh-keys add \
+            --key-file="${ANSIBLE_SSH_KEY_PATH}.pub" \
+            --ttl=1h \
+            --impersonate-service-account=${{ vars.GCP_SERVICE_ACCOUNT }}
+
           if [ -f ansible-runtime/ssh_user.txt ]; then
             SSH_USER=$(cat ansible-runtime/ssh_user.txt)
             echo "ANSIBLE_SSH_USER=${SSH_USER}" >> "$GITHUB_ENV"
           fi
+
+      - name: Cache Ansible collections and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ansible/collections
+            ~/.cache/pip
+          key: ansible-cache-${{ runner.os }}-core217-${{ hashFiles(format('{0}/ansible/requirements.yml', needs.resolve-env.outputs.dir), format('{0}/ansible/requirements.txt', needs.resolve-env.outputs.dir)) }}
+          restore-keys: |
+            ansible-cache-${{ runner.os }}-core217-
+            ansible-cache-${{ runner.os }}-
 
       - name: Install Ansible
         run: |
@@ -405,21 +501,11 @@ jobs:
           /opt/ansible-venv/bin/python -m pip install --no-cache-dir "ansible-core==2.17.*"
           echo "/opt/ansible-venv/bin" >> "$GITHUB_PATH"
 
-      - name: Cache Ansible collections and pip
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.ansible/collections
-            ~/.cache/pip
-          key: ansible-cache-${{ runner.os }}-core217-${{ hashFiles('environments/dev/ansible/requirements.yml', 'environments/dev/ansible/requirements.txt') }}
-          restore-keys: |
-            ansible-cache-${{ runner.os }}-core217-
-            ansible-cache-${{ runner.os }}-
-
       - name: Install Ansible Collections
-        run: ansible-galaxy collection install -r environments/dev/ansible/requirements.yml
+        run: ansible-galaxy collection install -r ${{ needs.resolve-env.outputs.dir }}/ansible/requirements.yml
 
-      - name: Run Ansible
+      - name: Run Ansible deploy
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.run_mode == 'trivy_scan') }}
         env:
           ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
           ALERTMANAGER_SMTP_SMARTHOST: ${{ secrets.ALERT_SMTP_SMARTHOST }}
@@ -429,7 +515,27 @@ jobs:
           ALERTMANAGER_SMTP_TO:        ${{ secrets.ALERT_SMTP_TO }}
           GRAFANA_ADMIN_USER:         ${{ secrets.GRAFANA_ADMIN_USER }}
           GRAFANA_ADMIN_PASSWORD:     ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
-        run: ansible-playbook -i ansible-runtime/hosts.ini environments/dev/ansible/site.yml
+        run: ansible-playbook -i ansible-runtime/hosts.ini ${{ needs.resolve-env.outputs.dir }}/ansible/site.yml
+
+      - name: Run Trivy image scan only
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_mode == 'trivy_scan' }}
+        env:
+          ANSIBLE_CONFIG: ansible-runtime/ansible.cfg
+        run: ansible-playbook -i ansible-runtime/hosts.ini ${{ needs.resolve-env.outputs.dir }}/ansible/trivy-image-scan.yml
+
+      - name: Set Trivy report date
+        id: trivy_date
+        if: always()
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Trivy image reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-reports-${{ needs.resolve-env.outputs.env }}-${{ steps.trivy_date.outputs.date }}
+          path: ansible-runtime/trivy-reports/
+          retention-days: 1
+          if-no-files-found: warn
 
       - name: Cleanup ephemeral SSH key from instances
         if: always()
@@ -442,6 +548,7 @@ jobs:
   publish_tunnel_instructions:
     name: Publish tunnel commands
     needs: [resolve-env, generate_inventory, run_ansible]
+    if: ${{ always() && needs.generate_inventory.result == 'success' && (needs.run_ansible.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.publish_tunnel_only == 'true')) && !(github.event_name == 'workflow_dispatch' && inputs.run_mode == 'trivy_scan') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download inventory artifact
@@ -464,27 +571,30 @@ jobs:
 
           cat > tunnel.txt <<EOF
           # Open Prometheus tunnel (9090) via SSH (IAP)
-          gcloud compute ssh ${HOST} \\
-            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-            --zone=${ZONE} \\
+          gcloud compute ssh ${HOST} \
+            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \
+            --zone=${ZONE} \
+            --tunnel-through-iap \
             -- -L9090:localhost:9090
           
           # Open Grafana tunnel (3000)
-          gcloud compute ssh ${HOST} \\
-            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-            --zone=${ZONE} \\
+          gcloud compute ssh ${HOST} \
+            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \
+            --zone=${ZONE} \
+            --tunnel-through-iap \
             -- -L3000:localhost:3000
           
           # Open Nginx landing page (80)
-          gcloud compute ssh ${HOST} \\
-            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-            --zone=${ZONE} \\
+          gcloud compute ssh ${HOST} \
+            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \
+            --zone=${ZONE} \
+            --tunnel-through-iap \
             -- -L8080:localhost:80
           
           # SSH a la VM (shell) via IAP
-          gcloud compute ssh ${HOST} \\
-            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \\
-            --zone=${ZONE} \\
+          gcloud compute ssh ${HOST} \
+            --project=${{ vars.GCP_INFRA_PROJECT_ID }} \
+            --zone=${ZONE} \
             --tunnel-through-iap
           
           # Luego navega a:
@@ -495,9 +605,22 @@ jobs:
 
           cat tunnel.txt
 
+
+          {
+            echo "## Ansible deployment Summary"
+            echo ""
+            echo "- Environment: \`${{ needs.resolve-env.outputs.env }}\`"
+            echo "- Host: \`${HOST}\`"
+            echo "- Zone: \`${ZONE}\`"
+            echo "- Tunnel artifact: \`iap-tunnel-${{ needs.resolve-env.outputs.env }}\`"
+            echo "- Artifact retention: 1 day"
+            echo ""
+            echo "Download the artifact to get the tunnel commands."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload tunnel commands
         uses: actions/upload-artifact@v4
         with:
           name: iap-tunnel-${{ needs.resolve-env.outputs.env }}
           path: tunnel.txt
-          retention-days: 14
+          retention-days: 1
