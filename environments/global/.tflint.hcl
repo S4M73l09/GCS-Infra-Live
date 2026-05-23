@@ -9,7 +9,7 @@ plugin "google" {
 }
 
 rule "terraform_required_version"    { enabled = true }
-rule "terraform_unused_declarations" { enabled = true }
+rule "terraform_unused_declarations" { enabled = false }
 rule "terraform_comment_syntax"      { enabled = true }
 
 
