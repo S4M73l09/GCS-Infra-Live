@@ -1,3 +1,8 @@
+# What is the project?
+
+This project is based on a fully controlled and automated infrastructure deployment on the `Google Cloud platform` cloud platform ensuring security, scalability, monitoring and control by **environments/branches**.
+
+
 # Infra Live - Environment Index
 
 This README is the environment entry point for the `main` branch.
@@ -5,7 +10,7 @@ This README is the environment entry point for the `main` branch.
 ## Index
 
 - [Dev Environment](#dev-environment)
-- [Global Environment](#global-environment)
+- [Packer-dev Environment](#packer-dev-environment)
 
 ---
 
@@ -32,6 +37,10 @@ environments/dev/
   variables.tf
   terraform.tfvars
   main.tf
+  checkov/
+    terraform/
+  policy/
+    terraform-policy/
   ansible/
     site.yml
     requirements.yml
@@ -50,14 +59,18 @@ What it creates:
   - `vm_name`
   - `vm_zone`
   - `vm_internal_ip`
-  - `vm_external_ip`
 
 Key parameters (`terraform.tfvars`):
 
 - `project_id`, `region`, `zone`
-- `series`, `vcpus`, `memory_mb`
+- `machine_type`
 - `disk_size_gb`
 - `create_public_ip`
+- `vm_service_account`
+
+Technical note:
+
+- `machine_type` is defined directly through a variable, for example `e2-standard-2`.
 
 ### Ansible (`environments/dev/ansible`)
 
@@ -65,7 +78,7 @@ What it applies:
 
 - Host bootstrap/configuration
 - Monitoring/web stack via compose template
-- Prometheus, Alertmanager, Grafana, Nginx and Blackbox
+- Prometheus, Alertmanager, Grafana, and Nginx
 
 Important paths:
 
@@ -79,21 +92,22 @@ Important paths:
 #### `Apply-Live.yaml` (`terraform-apply`)
 
 - Main trigger: `push` to `main` with changes in `environments/dev/**`
-- `workflow_dispatch` restricted to `dev`
 - Flow: resolve environment -> plan -> approval gate -> apply
-- Includes:
+- Includes:  
+  - `Checkov, Trivy and Conftest (OPA)`  
   - Terraform/TFLint cache
   - `tflint --init` + lint
   - `outputs.json` export
-  - `applied-env` and `applied-vm-zone` artifacts
+  - `applied-env` artifact for chained workflows
 
 #### `Ansible-Inventory.yaml` (`Ansible-Inventory`)
 
 - Trigger:
   - `workflow_dispatch`
-  - `workflow_run` from `terraform-apply` (main)
+  - `workflow_run` from `terraform-apply` (dev)
 - Generates runtime inventory under `ansible-runtime/`
-- IAP SSH warm-up with retries/backoff
+- Discovers VM zone dynamically at runtime
+- Supports `debug_mode` for diagnostics
 - Executes `environments/dev/ansible/site.yml`
 
 ### Applied optimizations
@@ -102,7 +116,8 @@ Important paths:
 - On-demand debug mode (`debug_mode`)
 - IAP SSH warm-up with retries/backoff
 - Terraform/TFLint/Ansible cache
-- `pull_policy: if_not_present` in Docker services
+- `pull_policy: if_not_present` in dev Docker services
+- `Security checks`in workflow `Apply-Live.yaml`
 
 ### Recommended flow
 
@@ -114,20 +129,34 @@ Important paths:
 
 Detailed docs:
 
-- [README dev](environments/dev/README.md)
 - [README dev EN](environments/dev/README.en.md)
+- [README dev](environments/dev/README.md)
 
 </details>
 
-## Global Environment
+---
+
+## Packer-dev Environment
 
 <details>
-<summary><strong>Show Global summary</strong></summary>
+<summary><strong>Show Packer-dev summary</strong></summary>
 
-`global` contains shared/base resources (for example base networking, common IAM and reusable components).
+`packer-dev` is used for base image flow + lab network/VM + related automation.
 
-Path:
+Paths:
 
-- `environments/global`
+- Terraform net: `environments/packer-dev/terraform-net`
+- Packer Ansible: `environments/packer-dev/ansible`
+- Packer template: `environments/packer-dev/gcp-ubuntu-2204-iap`
+
+Detailed docs:
+
+- [Terraform net README](environments/packer-dev/terraform-net/README.md)
+- [Packer Ansible README](environments/packer-dev/ansible/README.md)
+- [Terraform modules README](environments/packer-dev/terraform-net/modules/README.md)
 
 </details>
+
+## Branch Dev
+
+`The main branch` will be updated periodically to show current and old changes to improve documentation. This branch is for `tests`, `validations`, `continuous improvements`, provider updates, optimizations and real scalability while maintaining `FinOps` focus.

@@ -1,3 +1,8 @@
+# ¿Que es este proyecto?
+
+Este proyecto se basa en un despliegue de infraestructura totalmente controlado y automatizado en la plataforma en la nube de `Google Cloud platform` asegurando seguridad, escalabilidad, monitorizacion y control por **entornos/ramas**.
+
+
 # Infra Live - Índice de Entornos
 
 Este README funciona como punto de entrada por entorno en la rama `main`.
@@ -5,7 +10,7 @@ Este README funciona como punto de entrada por entorno en la rama `main`.
 ## Índice
 
 - [Entorno Dev](#entorno-dev)
-- [Entorno Global](#entorno-global)
+- [Entorno Packer-dev](#entorno-packer-dev)
 
 ---
 
@@ -32,6 +37,10 @@ environments/dev/
   variables.tf
   terraform.tfvars
   main.tf
+  checkov/
+    terraform/
+  policy/
+    terraform-policy/
   ansible/
     site.yml
     requirements.yml
@@ -50,14 +59,18 @@ Qué crea:
   - `vm_name`
   - `vm_zone`
   - `vm_internal_ip`
-  - `vm_external_ip`
 
 Parámetros clave (`terraform.tfvars`):
 
 - `project_id`, `region`, `zone`
-- `series`, `vcpus`, `memory_mb`
+- `machine_type`
 - `disk_size_gb`
 - `create_public_ip`
+- `vm_service_account`
+
+Nota técnica:
+
+- `machine_type` se define directamente por variable, por ejemplo `e2-standard-2`.
 
 ### Ansible (`environments/dev/ansible`)
 
@@ -65,7 +78,7 @@ Qué aplica:
 
 - Bootstrap/configuración de host
 - Stack de monitoring/web por template compose
-- Prometheus, Alertmanager, Grafana, Nginx y Blackbox
+- Prometheus, Alertmanager, Grafana y Nginx
 
 Rutas importantes:
 
@@ -79,21 +92,22 @@ Rutas importantes:
 #### `Apply-Live.yaml` (`terraform-apply`)
 
 - Trigger principal: `push` a `main` con cambios en `environments/dev/**`
-- `workflow_dispatch` restringido a `dev`
 - Flujo: detecta entorno -> plan -> aprobación por environment -> apply
-- Incluye:
+- Incluye:  
+  - `Checkov, Trivy, Conftest (OPA)`  
   - cache Terraform/TFLint
   - `tflint --init` + lint
   - export de `outputs.json`
-  - artifacts `applied-env` y `applied-vm-zone`
+  - artifact `applied-env` para encadenar Ansible
 
 #### `Ansible-Inventory.yaml` (`Ansible-Inventory`)
 
 - Trigger:
   - `workflow_dispatch`
-  - `workflow_run` desde `terraform-apply` (main)
+  - `workflow_run` desde `terraform-apply` (dev)
 - Genera inventario runtime en `ansible-runtime/`
-- Warm-up SSH por IAP con reintentos/backoff
+- Descubre zona dinámica por VM en runtime
+- Soporta `debug_mode` para pasos de diagnóstico
 - Ejecuta `environments/dev/ansible/site.yml`
 
 ### Optimizaciones aplicadas
@@ -102,7 +116,8 @@ Rutas importantes:
 - `debug_mode` bajo demanda
 - Warm-up SSH por IAP con retries/backoff
 - Cache de Terraform/TFLint/Ansible
-- `pull_policy: if_not_present` en servicios docker
+- `pull_policy: if_not_present` en servicios docker de dev
+- `Security Checks`en workflow `Apply-Live.yaml`
 
 ### Flujo recomendado
 
@@ -112,22 +127,36 @@ Rutas importantes:
 4. Ejecutar/encadenar `Ansible-Inventory`
 5. Validar artefactos y estado final
 
-Documentación específica:
+Documentación especifica (Técnica)
 
 - [README dev](environments/dev/README.md)
 - [README dev EN](environments/dev/README.en.md)
 
 </details>
 
-## Entorno Global
+---
+
+## Entorno Packer-dev
 
 <details>
-<summary><strong>Ver resumen de Global</strong></summary>
+<summary><strong>Ver resumen de Packer-dev</strong></summary>
 
-`global` contiene recursos compartidos/base (por ejemplo red base, IAM común y elementos reutilizables).
+`packer-dev` se usa para el flujo de imagen base + red/VM de laboratorio y automatización asociada.
 
-Ruta:
+Ubicaciones:
 
-- `environments/global`
+- Terraform net: `environments/packer-dev/terraform-net`
+- Ansible packer: `environments/packer-dev/ansible`
+- Plantilla Packer: `environments/packer-dev/gcp-ubuntu-2204-iap`
+
+Documentación específica (detalle técnico):
+
+- [README Terraform net](environments/packer-dev/terraform-net/README.md)
+- [README Ansible packer](environments/packer-dev/ansible/README.md)
+- [README módulos Terraform](environments/packer-dev/terraform-net/modules/README.md)
 
 </details>
+
+## Rama Dev
+
+`La rama main` sera actualizada periodicamente para mostrar los cambios actuales y antiguos para mejorar la documentacion. Esta rama es para `pruebas`, `validaciones`, `mejoras continuas`, updates de providers, optimizaciones y escalabilidad real manteniendo enfoque `FinOps`.

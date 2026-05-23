@@ -1,6 +1,6 @@
-# `dev` Environment
+# `staging` Environment
 
-This README documents **everything under `environments/dev/`** and how it is operated in CI/CD.
+This README documents **everything under `environments/staging/`** and how it is operated in CI/CD.
 
 ## Index
 
@@ -12,20 +12,20 @@ This README documents **everything under `environments/dev/`** and how it is ope
 
 ### Paths
 
-- `environments/dev/main.tf`
-- `environments/dev/variables.tf`
-- `environments/dev/providers.tf`
-- `environments/dev/versions.tf`
-- `environments/dev/backend.tf`
-- `environments/dev/terraform.tfvars`
-- `environments/dev/.tflint.hcl`
+- `environments/staging/main.tf`
+- `environments/staging/variables.tf`
+- `environments/staging/providers.tf`
+- `environments/staging/versions.tf`
+- `environments/staging/backend.tf`
+- `environments/staging/terraform.tfvars`
+- `environments/staging/.tflint.hcl`
 
 ### What it deploys
 
 - One Ubuntu 22.04 VM on GCP (`google_compute_instance.ubuntu`).
 - Configurable machine type through `machine_type` (defaults to `e2-standard-2`).
 - Configurable boot disk (`disk_size_gb`, `pd-balanced`).
-- Labels including `env = dev`.
+- Labels including `env = staging`.
 - `iap-ssh` network tag for IAP access.
 - Optional public IP through `create_public_ip`.
 
@@ -45,17 +45,17 @@ This README documents **everything under `environments/dev/`** and how it is ope
 
 ### Policy as Code (OPA/Conftest)
 
-- Policy folder: `environments/dev/policy/terraform-policy`.
+- Policy folder: `environments/staging/policy/terraform-policy`.
 - Static policy checks on `.tf`:
   - `security.rego` (default SA, secure boot, SSH-open firewall checks).
-  - `labels.rego` (required labels and `env=dev`).
+  - `labels.rego` (required labels and `env=staging`).
 - Runtime checks on resolved plan (`tfplan.json`):
   - `plan-security.rego` (validation over `resource_changes`).
 - `finops.rego` is oriented to plan-based checks (not unresolved source values).
 
 ### Policy as Code (Custom Checkov)
 
-- Custom checks folder: `environments/dev/checkov/terraform`.
+- Custom checks folder: `environments/staging/checkov/terraform`.
 - Pipeline integration (`security_checks`):
   - `bridgecrewio/checkov-action@v12`
   - `external_checks_dirs: ${{ needs.changes.outputs.dir }}/checkov/terraform`
@@ -64,18 +64,18 @@ This README documents **everything under `environments/dev/`** and how it is ope
   - `check_vm_secure_boot.py`: enforces `shielded_instance_config.enable_secure_boot = true`.
   - `check_firewall_no_ssh_open.py`: blocks ingress SSH (`22`) from `0.0.0.0/0`.
 - Optional local syntax validation:
-  - `python3 -m py_compile environments/dev/checkov/terraform/*.py`
+  - `python3 -m py_compile environments/staging/checkov/terraform/*.py`
 
 ## Block 2: Ansible
 
 ### Paths
 
-- `environments/dev/ansible/site.yml`
-- `environments/dev/ansible/trivy-image-scan.yml`
-- `environments/dev/ansible/requirements.yml`
-- `environments/dev/ansible/files/**`
-- `environments/dev/ansible/templates/**`
-- `environments/dev/ansible/web/**`
+- `environments/staging/ansible/site.yml`
+- `environments/staging/ansible/trivy-image-scan.yml`
+- `environments/staging/ansible/requirements.yml`
+- `environments/staging/ansible/files/**`
+- `environments/staging/ansible/templates/**`
+- `environments/staging/ansible/web/**`
 
 ### What it configures
 
@@ -124,8 +124,8 @@ This is activated by the workflow `Ansible-System-Maintenance.yaml` which genera
 
 ### 1) `.github/workflows/Apply-Live.yaml` (`name: terraform-apply`)
 
-- Main trigger: `push` on `main` branch with changes in `environments/dev/**`.
-- Also supports `workflow_dispatch` (restricted to `dev`).
+- Main trigger: `push` on `staging` branch with changes in `environments/staging/**`.
+- Also supports `workflow_dispatch` (restricted to `staging`).
 - Flow: `changes -> security_checks -> plan -> approve_gate -> apply -> publish-env-artifact`.
 - `security_checks` runs static controls for the environment:
   - `tflint`
@@ -135,7 +135,7 @@ This is activated by the workflow `Ansible-System-Maintenance.yaml` which genera
 - `plan` generates `tfplan.json` and runs `conftest` against `policy/terraform-policy`.
 - Published artifacts:
   - `tfplan` (`tfplan.bin`, `tfplan.txt`, `tfplan.json`)
-  - `terraform-outputs-dev` (`outputs.json`)
+  - `terraform-outputs-staging` (`outputs.json`)
   - `applied-vm-zone` (`vm_zone.txt`)
   - `applied-env` (`env.txt`)
 
@@ -147,7 +147,7 @@ This is activated by the workflow `Ansible-System-Maintenance.yaml` which genera
 - Resolves environment from `env.txt` or manual input.
 - Starts environment VMs if they are stopped (by `env` label).
 - Generates runtime inventory and runs:
-  - `ansible-playbook -i ansible-runtime/hosts.ini environments/dev/ansible/site.yml`
+  - `ansible-playbook -i ansible-runtime/hosts.ini environments/staging/ansible/site.yml`
 - On manual runs it supports `run_mode`:
   - `deploy`: normal Ansible deployment.
   - `trivy_scan`: image scan only through `trivy-image-scan.yml`, without reapplying the full configuration.
@@ -162,10 +162,10 @@ This is activated by the workflow `Ansible-System-Maintenance.yaml` which genera
 
 ## Recommended operation flow
 
-1. Change Terraform or Ansible under `environments/dev/**`.
+1. Change Terraform or Ansible under `environments/staging/**`.
 2. Validate static policies locally (optional, recommended):
-   - `conftest test environments/dev/*.tf -p environments/dev/policy/terraform-policy`
-3. Push to `main` branch.
+   - `conftest test environments/staging/*.tf -p environments/staging/policy/terraform-policy`
+3. Push to `staging` branch.
 4. Run/approve `terraform-apply`.
 5. Run (or chain) `Ansible-Inventory`.
 6. Review artifacts and final service state.

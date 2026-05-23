@@ -26,7 +26,7 @@ variable "allowed_zones" {
 variable "environment" {
   type        = string
   description = "Environment label used for resources and discovery"
-  default     = "dev"
+  default     = "staging"
 
   validation {
     condition     = contains(["staging", "dev"], var.environment)
@@ -68,7 +68,7 @@ variable "block_project_ssh_keys" {
 # VM
 variable "vm_name" {
   type    = string
-  default = "Ubuntu-dev"
+  default = "Ubuntu-staging"
 }
 
 variable "machine_type" {

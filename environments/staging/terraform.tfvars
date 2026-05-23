@@ -1,4 +1,4 @@
-project_id = "gcloud-live-dev" # ←  proyecto LIVE
+project_id = "gcloud-live-staging" # ←  proyecto LIVE
 region     = "europe-west1"
 zone       = "europe-west1-d"
 
@@ -11,7 +11,7 @@ osadmin_members = ["user:saminfradevops@gmail.com"]
 
 
 # VM
-vm_name          = "dev-oslogin-ubuntu"
+vm_name          = "staging-oslogin-ubuntu"
 machine_type     = "e2-standard-2" # 2 vCPU / 8 GB RAM
 disk_size_gb     = 25
 create_public_ip = false # true si queremos IP pública
