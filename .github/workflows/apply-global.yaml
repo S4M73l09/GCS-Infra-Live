@@ -6,7 +6,7 @@ name: apply-global
 
 on:
   push:
-     branches: ["staging"]
+     branches: ["main"]
      paths:
        - "environments/global/**"
        - ".github/workflows/apply-global.yaml"
