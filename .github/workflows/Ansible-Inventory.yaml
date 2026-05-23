@@ -191,6 +191,8 @@ jobs:
 
 
       - name: Ensure GCP VMs are running
+        env:
+          GCP_PROJECT: ${{ vars.GCP_INFRA_PROJECT_ID }}
         run: |
           set -euo pipefail
           echo "Checking for stopped GCP instances in environment: ${{ needs.resolve-env.outputs.env }}"
@@ -198,6 +200,7 @@ jobs:
           # List all instances for the environment, filter for TERMINATED ones
           STOPPED_INSTANCES=$(gcloud compute instances list \
             --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND (status=TERMINATED OR status=STOPPED OR status=SUSPENDED)" \
+            --project="${GCP_PROJECT}" \
             --format="value(name,zone.basename())")
 
           if [ -z "$STOPPED_INSTANCES" ]; then
@@ -208,7 +211,7 @@ jobs:
               INSTANCE_NAME=${INSTANCE_NAME%$'\r'}
               INSTANCE_ZONE=${INSTANCE_ZONE%$'\r'}
               echo "Starting instance: $INSTANCE_NAME in zone: $INSTANCE_ZONE"
-              gcloud compute instances start "$INSTANCE_NAME" --zone="$INSTANCE_ZONE" --quiet
+              gcloud compute instances start "$INSTANCE_NAME" --zone="$INSTANCE_ZONE" --project="${GCP_PROJECT}" --quiet
             done
             echo "All identified stopped instances have been commanded to start."
             
@@ -221,10 +224,12 @@ jobs:
             while [ "$ELAPSED_TIME" -lt "$MAX_WAIT_TIME" ]; do
               RUNNING_INSTANCES=$(gcloud compute instances list \
                 --filter="labels.env=${{ needs.resolve-env.outputs.env }} AND status=RUNNING" \
+                --project="${GCP_PROJECT}" \
                 --format="value(name)")
               
               ALL_INSTANCES=$(gcloud compute instances list \
                 --filter="labels.env=${{ needs.resolve-env.outputs.env }}" \
+                --project="${GCP_PROJECT}" \
                 --format="value(name)")
               
               # Count total instances and running instances (solo líneas no vacías)

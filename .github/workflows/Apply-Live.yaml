@@ -218,7 +218,7 @@ jobs:
           sudo apt-get install -y trivy
           trivy --version
 
-      - name: Trivy IaC scan (staging + apply workflow)
+      - name: Trivy IaC scan (dev + apply workflow)
         run: |
           set -euo pipefail
 
