@@ -29,4 +29,4 @@ Se importaron recursos ya existentes del proyecto a este estado global para no r
 
 ## Cómo se aplica
 Este stack se **aplicó desde consola** porque son recursos “one-off” (se crean una vez y luego se gestionan aquí).  
-No es necesario añadirlo a los workflows en serie.
+No es necesario añadirlo a los workflows en serie, pero importante que tenga un workflow separado.
