@@ -5,24 +5,24 @@ This project is based on a fully controlled and automated infrastructure deploym
 
 # Infra Live - Environment Index
 
-This README is the environment entry point for the `staging` branch.
+This README is the environment entry point for the `main` branch.
 
 ## Index
 
-- [Staging Environment](#staging-environment)
+- [Dev Environment](#dev-environment)
 - [Packer-dev Environment](#packer-dev-environment)
 
 ---
 
-## Staging Environment
+## Dev Environment
 
 <details open>
-<summary><strong>Show full Staging details</strong></summary>
+<summary><strong>Show full Dev details</strong></summary>
 
 ### Scope
 
-- Terraform: `environments/staging`
-- Ansible: `environments/staging/ansible`
+- Terraform: `environments/dev`
+- Ansible: `environments/dev/ansible`
 - Main workflows:
   - `.github/workflows/Apply-Live.yaml` (`name: terraform-apply`)
   - `.github/workflows/Ansible-Inventory.yaml` (`name: Ansible-Inventory`)
@@ -30,7 +30,7 @@ This README is the environment entry point for the `staging` branch.
 ### Structure
 
 ```text
-environments/staging/
+environments/dev/
   backend.tf
   providers.tf
   versions.tf
@@ -49,31 +49,30 @@ environments/staging/
     web/
 ```
 
-### Terraform (`environments/staging`)
+### Terraform (`environments/dev`)
 
 What it creates:
 
 - Ubuntu 22.04 VM (`google_compute_instance`)
-- Environment labels (`env = staging`)
+- Environment labels (`env = dev`)
 - Outputs:
   - `vm_name`
   - `vm_zone`
   - `vm_internal_ip`
-  - `vm_external_ip`
 
 Key parameters (`terraform.tfvars`):
 
 - `project_id`, `region`, `zone`
-- `series`, `vcpus`, `memory_mb`
+- `machine_type`
 - `disk_size_gb`
 - `create_public_ip`
+- `vm_service_account`
 
 Technical note:
 
-- Custom `machine_type` is built in `main.tf` as:
-  - `${var.series}-custom-${var.vcpus}-${var.memory_mb}`
+- `machine_type` is defined directly through a variable, for example `e2-standard-2`.
 
-### Ansible (`environments/staging/ansible`)
+### Ansible (`environments/dev/ansible`)
 
 What it applies:
 
@@ -83,16 +82,16 @@ What it applies:
 
 Important paths:
 
-- Playbook: `environments/staging/ansible/site.yml`
-- Compose template: `environments/staging/ansible/templates/monitoring/docker-compose.yml.j2`
-- Prometheus: `environments/staging/ansible/files/monitoring/prometheus/prometheus.yml`
-- Alert rules: `environments/staging/ansible/files/monitoring/prometheus/rules/alerts.yml`
+- Playbook: `environments/dev/ansible/site.yml`
+- Compose template: `environments/dev/ansible/templates/monitoring/docker-compose.yml.j2`
+- Prometheus: `environments/dev/ansible/files/monitoring/prometheus/prometheus.yml`
+- Alert rules: `environments/dev/ansible/files/monitoring/prometheus/rules/alerts.yml`
 
-### Staging Workflows
+### Dev Workflows
 
 #### `Apply-Live.yaml` (`terraform-apply`)
 
-- Main trigger: `push` to `staging` with changes in `environments/staging/**`
+- Main trigger: `push` to `main` with changes in `environments/dev/**`
 - Flow: resolve environment -> plan -> approval gate -> apply
 - Includes:  
   - `Checkov, Trivy and Conftest (OPA)`  
@@ -105,11 +104,11 @@ Important paths:
 
 - Trigger:
   - `workflow_dispatch`
-  - `workflow_run` from `terraform-apply` (staging)
+  - `workflow_run` from `terraform-apply` (dev)
 - Generates runtime inventory under `ansible-runtime/`
 - Discovers VM zone dynamically at runtime
 - Supports `debug_mode` for diagnostics
-- Executes `environments/staging/ansible/site.yml`
+- Executes `environments/dev/ansible/site.yml`
 
 ### Applied optimizations
 
@@ -117,21 +116,21 @@ Important paths:
 - On-demand debug mode (`debug_mode`)
 - IAP SSH warm-up with retries/backoff
 - Terraform/TFLint/Ansible cache
-- `pull_policy: if_not_present` in staging Docker services
+- `pull_policy: if_not_present` in dev Docker services
 - `Security checks`in workflow `Apply-Live.yaml`
 
 ### Recommended flow
 
-1. Edit `environments/staging/**` or `environments/staging/ansible/**`
-2. Push to `staging`
+1. Edit `environments/dev/**` or `environments/dev/ansible/**`
+2. Push to `main`
 3. Run `terraform-apply`
 4. Run/chain `Ansible-Inventory`
 5. Validate artifacts and final state
 
 Detailed docs:
 
-- [README staging EN](environments/staging/README.en.md)
-- [README staging](environments/staging/README.md)
+- [README dev EN](environments/dev/README.en.md)
+- [README dev](environments/dev/README.md)
 
 </details>
 
@@ -158,6 +157,6 @@ Detailed docs:
 
 </details>
 
-## Branch Staging
+## Branch Dev
 
-`The staging branch` will be updated periodically to show current and old changes to improve documentation. This branch is for `tests`, `validations`, `continuous improvements`, provider updates, optimizations and real scalability while maintaining `FinOps` focus.
+`The main branch` will be updated periodically to show current and old changes to improve documentation. This branch is for `tests`, `validations`, `continuous improvements`, provider updates, optimizations and real scalability while maintaining `FinOps` focus.
